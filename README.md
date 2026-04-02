@@ -43,3 +43,10 @@ If you'd like to download 30-second Spotify audio previews for tracks in the dat
    python src/fetch_spotify_audio.py
    ```
    This will read the first 10 tracks from `data/dataset/spotify_songs.csv` and download the `.mp3` previews into the `data/audio_files/` directory.
+
+3. **Convert to Spectrograms**:
+   Once you have downloaded the audio preview files, you can generate image spectrograms for them by running:
+   ```sh
+   python src/spectrogram_embedding.py
+   ```
+   This will read the `.mp3` files in `data/audio_files/`, create Mel Spectrogram images without borders or axes, and save them as `.png` files in the `data/spectrograms/` directory.

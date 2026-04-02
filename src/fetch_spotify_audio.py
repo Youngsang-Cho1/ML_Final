@@ -60,7 +60,7 @@ def main():
             if preview_url:
                 print(f"[{index+1}/10] Downloading '{track_name}' by {artist_name}...")
                 safe_name = "".join([c for c in f"{track_name} - {artist_name}" if c.isalpha() or c.isdigit() or c==' ']).rstrip()
-                file_path = os.path.join(output_dir, f"{safe_name}.mp3")
+                file_path = os.path.join(output_dir, f"{safe_name}.m4a")
                 
                 if download_audio(preview_url, file_path):
                     print(f"    -> Saved to {file_path}")
