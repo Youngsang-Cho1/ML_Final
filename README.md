@@ -27,5 +27,19 @@ The web app uses methods and algorithms covered in our Machine Learning course:
 - tests/: Unit tests for the modules.
 
 ## Setup Instructions
-1. Activate the python virtual environment: `source venv/bin/activate`
-2. Install the necessary packages: `pip install -r requirements.txt`
+1. Create a virtual environment using `uv`: `uv venv`
+2. Activate the python virtual environment: `source .venv/bin/activate`
+3. Install the necessary dependencies: `uv pip install -r requirements.txt spotipy pandas requests python-dotenv`
+
+## Updating Dataset Audio
+If you'd like to download 30-second Spotify audio previews for tracks in the dataset:
+1. Create a `.env` file at the root of the project with your Spotify credentials:
+   ```env
+   SPOTIPY_CLIENT_ID=your_client_id_here
+   SPOTIPY_CLIENT_SECRET=your_client_secret_here
+   ```
+2. Run the fetching script:
+   ```sh
+   python src/fetch_spotify_audio.py
+   ```
+   This will read the first 10 tracks from `data/dataset/spotify_songs.csv` and download the `.mp3` previews into the `data/audio_files/` directory.
