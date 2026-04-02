@@ -32,17 +32,12 @@ The web app uses methods and algorithms covered in our Machine Learning course:
 3. Install the necessary dependencies: `uv pip install -r requirements.txt spotipy pandas requests python-dotenv`
 
 ## Updating Dataset Audio
-If you'd like to download 30-second Spotify audio previews and embed them locally using Hugging Face DINOv2:
-1. Create a `.env` file at the root of the project with your Spotify Web API credentials:
-   ```env
-   SPOTIPY_CLIENT_ID=your_client_id_here
-   SPOTIPY_CLIENT_SECRET=your_client_secret_here
-   ```
-2. Run the fetching script:
+If you'd like to download audio locally into `.m4a` files using YouTube and embed them using Hugging Face DINOv2:
+1. Run the fetching script (uses `yt-dlp` to query matches directly from YouTube without needing any API keys!):
    ```sh
-   python src/fetch_spotify_audio.py
+   python src/fetch_youtube_audio.py
    ```
-   This will read the first 10 tracks from `data/dataset/spotify_songs.csv` and download the `.mp3` previews into the `data/audio_files/` directory.
+   This will read the first 10 tracks from `data/dataset/spotify_songs.csv` and download the `.m4a` audio directly into the `data/audio_files/` directory.
 
 3. **Convert to Spectrograms**:
    Once you have downloaded the audio preview files, you can generate image spectrograms for them by running:
