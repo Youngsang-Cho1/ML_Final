@@ -2,4 +2,8 @@ pandas
 numpy
 scikit-learn
 streamlit
-
+spotipy
+requests
+python-dotenv
+librosa
+matplotlib
