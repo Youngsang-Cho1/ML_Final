@@ -32,8 +32,8 @@ The web app uses methods and algorithms covered in our Machine Learning course:
 3. Install the necessary dependencies: `uv pip install -r requirements.txt spotipy pandas requests python-dotenv`
 
 ## Updating Dataset Audio
-If you'd like to download 30-second Spotify audio previews for tracks in the dataset:
-1. Create a `.env` file at the root of the project with your Spotify credentials:
+If you'd like to download 30-second Spotify audio previews and embed them locally using Hugging Face DINOv2:
+1. Create a `.env` file at the root of the project with your Spotify Web API credentials:
    ```env
    SPOTIPY_CLIENT_ID=your_client_id_here
    SPOTIPY_CLIENT_SECRET=your_client_secret_here
@@ -47,6 +47,13 @@ If you'd like to download 30-second Spotify audio previews for tracks in the dat
 3. **Convert to Spectrograms**:
    Once you have downloaded the audio preview files, you can generate image spectrograms for them by running:
    ```sh
+   python src/generate_spectrograms.py
+   ```
+   This will read the `.m4a`/`.mp3` files in `data/audio_files/`, create Mel Spectrogram images without borders or axes, and save them as `.png` files in the `data/spectrograms/` directory.
+
+4. **Embed Spectrograms**:
+   Once the images are generated, generate their embeddings using DINOv2:
+   ```sh
    python src/spectrogram_embedding.py
    ```
-   This will read the `.mp3` files in `data/audio_files/`, create Mel Spectrogram images without borders or axes, and save them as `.png` files in the `data/spectrograms/` directory.
+   This reads the `.png` files, evaluates them with the `facebook/dinov2-small` model running locally, and creates a vectorized dataset stored as `data/embeddings/embedded_parquet.parquet`.

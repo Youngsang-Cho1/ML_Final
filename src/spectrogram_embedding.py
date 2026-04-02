@@ -1,70 +1,77 @@
 import os
 import glob
-import librosa
-import numpy as np
-import matplotlib
-# Use Agg backend for headless environments
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
-def generate_spectrogram(audio_path, output_path):
-    """
-    Load an audio file and save its Mel spectrogram as an image without any axes.
-    """
-    # Load the audio (downmixes to mono automatically, resamples to 22050 Hz)
-    y, sr = librosa.load(audio_path, sr=22050)
-    
-    # Compute Mel spectrogram
-    S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000)
-    
-    # Convert power to decibels (log scale)
-    S_dB = librosa.power_to_db(S, ref=np.max)
-    
-    # Set up matplotlib figure
-    # We use a specific figsize but no frame/axes to get a clean image 
-    plt.figure(figsize=(10, 4), frameon=False)
-    plt.axis('off')
-    
-    # Draw the spectrogram using imshow directly or specshow
-    # We use specshow which properly maps the 2D array
-    librosa.display.specshow(S_dB, sr=sr, fmax=8000, cmap='viridis')
-    
-    # Save directly to file without white borders
-    plt.savefig(output_path, bbox_inches='tight', pad_inches=0, transparent=True)
-    plt.close()
+import pandas as pd
+import torch
+from transformers import AutoImageProcessor, AutoModel
+from PIL import Image
 
 def main():
-    input_dir = "data/audio_files"
-    output_dir = "data/spectrograms"
+    input_dir = "data/spectrograms"
+    embed_dir = "data/embeddings"
     
-    # Ensure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
+    # Ensure output directories exist
+    os.makedirs(embed_dir, exist_ok=True)
     
-    audio_files = glob.glob(os.path.join(input_dir, "*.mp3")) + glob.glob(os.path.join(input_dir, "*.m4a"))
+    spectrogram_imgs = glob.glob(os.path.join(input_dir, "*.png"))
     
-    if not audio_files:
-        print(f"No audio files found in '{input_dir}'. Please fetch spotify audio first.")
+    if not spectrogram_imgs:
+        print(f"No spectrogram images available in '{input_dir}' to embed.")
+        print("Please run the generation script first.")
         return
         
-    print(f"Found {len(audio_files)} audio files. Generating spectrogram images...")
-    
-    for i, audio_path in enumerate(audio_files, 1):
-        if audio_path.endswith('.mp3'):
-            new_path = audio_path[:-4] + '.m4a'
-            os.rename(audio_path, new_path)
-            audio_path = new_path
-            
-        filename = os.path.basename(audio_path)
-        name, _ = os.path.splitext(filename)
-        output_path = os.path.join(output_dir, f"{name}.png")
+    print(f"\nLoading facebook/dinov2-small model using Hugging Face Transformers...")
+    try:
+        processor = AutoImageProcessor.from_pretrained('facebook/dinov2-small')
+        model = AutoModel.from_pretrained('facebook/dinov2-small')
+        model.eval() # Set model to evaluation mode
         
-        print(f"[{i}/{len(audio_files)}] Processing '{filename}' -> '{name}.png'")
-        try:
-            generate_spectrogram(audio_path, output_path)
-        except Exception as e:
-            print(f"    -> Error processing {filename}: {e}")
-            
-    print("Spectrogram generation complete!")
+        # Determine device
+        device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
+        model.to(device)
+        print(f"Model loaded and mapped to device: {device}")
+        
+    except Exception as e:
+        print(f"❌ Failed to load model: {e}")
+        return
+
+    print(f"Generating DINOv2 vision embeddings for {len(spectrogram_imgs)} spectrogram images...")
+    
+    all_embeddings = []
+    valid_image_paths = []
+    
+    with torch.no_grad():
+        for i, img_path in enumerate(spectrogram_imgs, 1):
+            try:
+                print(f"[{i}/{len(spectrogram_imgs)}] Embedding {os.path.basename(img_path)}...")
+                image = Image.open(img_path).convert('RGB')
+                inputs = processor(images=image, return_tensors="pt").to(device)
+                
+                outputs = model(**inputs)
+                # Extract the CLS token embedding from the last hidden state
+                # last_hidden_state shape: (batch_size, sequence_length, hidden_size)
+                # CLS token is at index 0.
+                embedding = outputs.last_hidden_state[:, 0, :].cpu().numpy().tolist()[0]
+                
+                all_embeddings.append(embedding)
+                valid_image_paths.append(img_path)
+                
+            except Exception as e:
+                print(f"    -> Failed to process {img_path}: {e}")
+    
+    if not all_embeddings:
+        print("❌ No embeddings were generated successfully.")
+        return
+        
+    df = pd.DataFrame({
+        "image_path": valid_image_paths,
+        "embedding": all_embeddings
+    })
+    
+    df['track_id'] = df['image_path'].apply(lambda p: os.path.splitext(os.path.basename(p))[0])
+    
+    out_parquet = os.path.join(embed_dir, "embedded_spectrograms.parquet")
+    df.to_parquet(out_parquet)
+    print(f"\n✅ Successfully saved DINOv2 embeddings to {out_parquet}")
 
 if __name__ == "__main__":
     main()

@@ -7,3 +7,8 @@ requests
 python-dotenv
 librosa
 matplotlib
+pyarrow
+torch
+transformers
+pillow
+torchvision
