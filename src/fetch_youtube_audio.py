@@ -15,24 +15,24 @@ def main():
         print(f"Error reading dataset: {e}")
         return
 
-    first_10 = df.head(10)
+    first_1000 = df.head(1000)
     success_count = 0
     fail_count = 0
 
-    print("Fetching Youtube audio for the first 10 songs...\n")
+    print("Fetching Youtube audio for the first 1000 songs...\n")
     
-    for index, row in first_10.iterrows():
+    for index, row in first_1000.iterrows():
         track_name = row['track_name']
         artist_name = row['track_artist']
         safe_name = "".join([c for c in f"{track_name} - {artist_name}" if c.isalpha() or c.isdigit() or c==' ']).rstrip()
         file_path = os.path.join(output_dir, f"{safe_name}.m4a")
         
         if os.path.exists(file_path):
-            print(f"[{index+1}/10] Skipping '{track_name}' by {artist_name} -> '{safe_name}.m4a' already exists.")
+            print(f"[{index+1}/1000] Skipping '{track_name}' by {artist_name} -> '{safe_name}.m4a' already exists.")
             success_count += 1
             continue
             
-        print(f"[{index+1}/10] Downloading '{track_name}' by {artist_name} from YouTube...")
+        print(f"[{index+1}/1000] Downloading '{track_name}' by {artist_name} from YouTube...")
         query = f"ytsearch1:{track_name} {artist_name} audio"
         
         ydl_opts = {
@@ -53,7 +53,7 @@ def main():
             print(f"    -> Failed to download audio. Error: {str(e)[:200]}")
             fail_count += 1
             
-        time.sleep(1) # Courtesy delay
+        time.sleep(1)
         
     print(f"\nDone! Successfully downloaded {success_count} files. {fail_count} failures.")
 
