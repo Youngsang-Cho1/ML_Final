@@ -127,17 +127,37 @@ if selected_song_full != "Select a song...":
 
     with c2:
         st.subheader("Recommendations")
-        similar_indices = np.argsort(sim_matrix[idx])[-6:][::-1]
+        
+        # Filter by the same cluster
+        target_cluster = target_row['cluster']
+        same_cluster_mask = df['cluster'] == target_cluster
+        
+        # Get similarities for the target song 
+        sim_scores = sim_matrix[idx].copy()
+        
+        # Zero out (-1) similarities for songs not in the same cluster
+        sim_scores[~same_cluster_mask] = -1
+        
+        # Sort and get the top 6 (including the seed song itself at index 0)
+        similar_indices = np.argsort(sim_scores)[-6:][::-1]
         
         cols = st.columns(5)
         for i, neighbor_idx in enumerate(similar_indices[1:]):
+            if sim_scores[neighbor_idx] == -1:
+                break
+                
             neighbor = df.iloc[neighbor_idx]
+            
+            # Show the genre of the recommended songs
+            genre = str(neighbor.get('playlist_genre', 'Unknown')).upper()
+            
             with cols[i]:
                 st.markdown(f"""
-                <div class="song-card" style="font-size: 0.9rem; padding: 1rem; height: 180px;">
+                <div class="song-card" style="font-size: 0.9rem; padding: 1rem; height: 190px;">
                     <p style="font-weight: bold; margin-bottom: 5px;">{neighbor['track_name']}</p>
-                    <p style="color: #888; font-size: 0.8rem;">{neighbor['track_artist']}</p>
-                    <p style="color: #4B6CB7; font-size: 0.7rem; font-weight: bold;">{sim_matrix[idx][neighbor_idx]:.2f} Sim</p>
+                    <p style="color: #888; font-size: 0.8rem; margin-bottom: 2px;">{neighbor['track_artist']}</p>
+                    <p style="color: #666; font-size: 0.7rem; margin-bottom: 5px;">{genre}</p>
+                    <p style="color: #4B6CB7; font-size: 0.7rem; font-weight: bold;">{sim_scores[neighbor_idx]:.2f} Sim</p>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -186,7 +206,7 @@ fig.update_layout(
     )
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width='stretch')
 
 st.markdown("""
 <div style="text-align: center; color: #555; margin-top: 50px; font-size: 0.8rem;">
