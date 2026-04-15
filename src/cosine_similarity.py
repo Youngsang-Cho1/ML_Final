@@ -4,24 +4,24 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 def main():
-    parquet_path = 'data/embeddings/embedded_spectrograms.parquet'
+    parquet_path = 'data/dataset/clustered_songs.parquet'
     
     if not os.path.exists(parquet_path):
-        print(f"Cannot find {parquet_path}. Please generate embeddings first.")
+        print(f"Cannot find {parquet_path}. Please generate clusters first.")
         return
         
-    print(f"Loading embeddings from {parquet_path}...")
+    print(f"Loading data from {parquet_path}...")
     df = pd.read_parquet(parquet_path)
     
-    # Check if there are any embeddings
+    # Check if there are any features
     if df.empty:
         print("Dataset is empty.")
         return
         
     print(f"Loaded {df.shape[0]} songs.")
     
-    # Extract the embeddings (768-D vectors)
-    X_emb = np.stack(df['embedding'].values)
+    # Extract the fused features (35-D vectors)
+    X_emb = np.stack(df['fused_features'].values)
     
     # Calculate N x N cosine similarity matrix
     print(f"Calculating {X_emb.shape[0]}x{X_emb.shape[0]} cosine similarity square matrix...")
