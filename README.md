@@ -27,5 +27,28 @@ The web app uses methods and algorithms covered in our Machine Learning course:
 - tests/: Unit tests for the modules.
 
 ## Setup Instructions
-1. Activate the python virtual environment: `source venv/bin/activate`
-2. Install the necessary packages: `pip install -r requirements.txt`
+1. Create a virtual environment using `uv`: `uv venv`
+2. Activate the python virtual environment: `source .venv/bin/activate`
+3. Install the necessary dependencies: `uv pip install -r requirements.txt spotipy pandas requests python-dotenv`
+
+## Updating Dataset Audio
+If you'd like to download audio locally into `.m4a` files using YouTube and embed them using Hugging Face DINOv2:
+1. Run the fetching script (uses `yt-dlp` to query matches directly from YouTube without needing any API keys!):
+   ```sh
+   python src/fetch_youtube_audio.py
+   ```
+   This will read the first 10 tracks from `data/dataset/spotify_songs.csv` and download the `.m4a` audio directly into the `data/audio_files/` directory.
+
+3. **Convert to Spectrograms**:
+   Once you have downloaded the audio preview files, you can generate image spectrograms for them by running:
+   ```sh
+   python src/generate_spectrograms.py
+   ```
+   This will read the `.m4a`/`.mp3` files in `data/audio_files/`, create Mel Spectrogram images without borders or axes, and save them as `.png` files in the `data/spectrograms/` directory.
+
+4. **Embed Spectrograms**:
+   Once the images are generated, generate their embeddings using DINOv2:
+   ```sh
+   python src/spectrogram_embedding.py
+   ```
+   This reads the `.png` files, evaluates them with the `facebook/dinov2-small` model running locally, and creates a vectorized dataset stored as `data/embeddings/embedded_parquet.parquet`.

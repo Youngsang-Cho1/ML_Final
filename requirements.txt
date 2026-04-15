@@ -2,4 +2,14 @@ pandas
 numpy
 scikit-learn
 streamlit
-
+yt-dlp
+spotipy
+requests
+python-dotenv
+librosa
+matplotlib
+pyarrow
+torch
+transformers
+pillow
+torchvision
