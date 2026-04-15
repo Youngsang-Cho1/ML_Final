@@ -17,6 +17,11 @@ def main():
     # Since fetch_youtube_audio.py saves the files using safe_name, the embed_dir gets that name as track_id
     df['safe_name'] = df.apply(lambda row: "".join([c for c in f"{row['track_name']} - {row['track_artist']}" if c.isalpha() or c.isdigit() or c==' ']).rstrip(), axis=1)
     
+    # CRITICAL: Drop duplicates in the original dataset to avoid inflating the joined table
+    original_count = len(df)
+    df = df.drop_duplicates(subset=['safe_name']).reset_index(drop=True)
+    print(f"Dropped duplicate songs from metadata: {original_count} -> {len(df)}")
+    
     # 2. Load Embeddings
     parquet_path = 'data/embeddings/embedded_spectrograms.parquet'
     if not os.path.exists(parquet_path):
@@ -30,7 +35,7 @@ def main():
         return
         
     # Merge on the safe_name
-    print("Merging Spotify dataset with DINOv2 audio embeddings...")
+    print("Merging Spotify dataset with MFCC audio features...")
     merged_df = pd.merge(df, embeddings_df, left_on='safe_name', right_on='track_id', how='inner')
     print(f"Merged Data Shape: {merged_df.shape}")
     
@@ -69,11 +74,12 @@ def main():
     scaler_emb = StandardScaler()
     X_emb_scaled = scaler_emb.fit_transform(X_emb)
     
-    # PCA on Embeddings (Dimensionality: 768 -> 30)
-    n_comp_emb = min(30, X_emb_scaled.shape[0], X_emb_scaled.shape[1])
+    # PCA on Audio Embeddings (MFCC: ~58D -> 20D)
+    # Less aggressive reduction since MFCC features are already meaningful
+    n_comp_emb = min(20, X_emb_scaled.shape[0], X_emb_scaled.shape[1])
     pca_emb = PCA(n_components=n_comp_emb)
     X_emb_pca = pca_emb.fit_transform(X_emb_scaled)
-    print(f"Audio Embeddings reduced via PCA: {X_emb_scaled.shape[1]} -> {X_emb_pca.shape[1]} dimensions")
+    print(f"Audio Embeddings (MFCC) reduced via PCA: {X_emb_scaled.shape[1]} -> {X_emb_pca.shape[1]} dimensions")
     
     # 5. Multimodal Fusion (Concatenation)
     X_fused = np.hstack((X_num_pca, X_emb_pca))

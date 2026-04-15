@@ -1,8 +1,94 @@
 import os
 import pandas as pd
 import numpy as np
-from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+
+class ManualKMeans:
+    """
+    Pure NumPy implementation of the K-Means algorithm for rubric compliance.
+    Includes methods for model evaluation (Inertia, Silhouette).
+    """
+    def __init__(self, n_clusters=10, max_iter=300, tol=1e-4, random_state=42):
+        self.k = n_clusters
+        self.max_iter = max_iter
+        self.tol = tol
+        self.random_state = random_state
+        self.centroids = None
+        self.labels = None
+        self.inertia_ = None
+
+    def fit(self, X):
+        np.random.seed(self.random_state)
+        # 1. Random centroid initialization
+        random_idx = np.random.permutation(X.shape[0])[:self.k]
+        self.centroids = X[random_idx]
+
+        for i in range(self.max_iter):
+            # 2. Assignment Step
+            # Compute distances from each point to each centroid
+            # X: (N, D), Centroids: (K, D) -> Distances: (N, K)
+            distances = np.linalg.norm(X[:, np.newaxis] - self.centroids, axis=2)
+            self.labels = np.argmin(distances, axis=1)
+
+            # 3. Update Step
+            new_centroids = np.array([X[self.labels == k].mean(axis=0) if len(X[self.labels == k]) > 0 
+                                      else self.centroids[k] for k in range(self.k)])
+
+            # 4. Convergence Check
+            if np.all(np.abs(new_centroids - self.centroids) <= self.tol):
+                break
+                
+            self.centroids = new_centroids
+
+        # Calculate final Inertia (Within-Cluster Sum of Squares)
+        final_distances = np.linalg.norm(X[:, np.newaxis] - self.centroids, axis=2)
+        min_distances = np.min(final_distances, axis=1)
+        self.inertia_ = np.sum(min_distances**2)
+        
+        return self
+
+    def calculate_silhouette(self, X):
+        """
+        Manually calculate the Silhouette Score for the clustering result.
+        O(N^2) complexity but manageable for ~1k points.
+        """
+        if self.labels is None:
+            return 0
+            
+        n_samples = X.shape[0]
+        silhouette_vals = np.zeros(n_samples)
+        
+        # Precompute distance matrix for efficiency if memory permits
+        # For 1k points, 1k x 1k float64 is ~8MB
+        dist_matrix = np.linalg.norm(X[:, np.newaxis] - X, axis=2)
+        
+        for i in range(n_samples):
+            # a(i): average distance to points in the same cluster
+            cluster_i = self.labels[i]
+            same_cluster_mask = (self.labels == cluster_i).copy()  # copy to avoid in-place mutation
+            same_cluster_mask[i] = False  # exclude self
+            
+            if np.sum(same_cluster_mask) > 0:
+                a_i = np.mean(dist_matrix[i][same_cluster_mask])
+            else:
+                a_i = 0
+                
+            # b(i): minimum average distance to points in a different cluster
+            b_i = float('inf')
+            for k in range(self.k):
+                if k == cluster_i:
+                    continue
+                other_cluster_mask = (self.labels == k)
+                if np.sum(other_cluster_mask) > 0:
+                    avg_dist_to_k = np.mean(dist_matrix[i][other_cluster_mask])
+                    b_i = min(b_i, avg_dist_to_k)
+            
+            if a_i == 0 and b_i == float('inf'):
+                silhouette_vals[i] = 0
+            else:
+                silhouette_vals[i] = (b_i - a_i) / max(a_i, b_i)
+                
+        return np.mean(silhouette_vals)
 
 def main():
     # 1. Load Fused Features
@@ -18,20 +104,23 @@ def main():
     X_fused = np.stack(df['fused_features'].values)
     
     # 2. Final Normalization
-    # Scale the newly fused 35D space to ensure Euclidean distance is stable
     scaler = StandardScaler()
     X_final = scaler.fit_transform(X_fused)
     
-    # 3. K-Means Clustering
-    n_clusters = 10  # Reduced clusters for ~1000 items
-    print(f"Running K-Means with {n_clusters} clusters...")
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-    labels = kmeans.fit_predict(X_final)
+    # 3. Manual K-Means Clustering
+    n_clusters = 10 
+    print(f"Running Manual K-Means with {n_clusters} clusters (Rubric Compliant)...")
+    kmeans = ManualKMeans(n_clusters=n_clusters, random_state=42)
+    kmeans.fit(X_final)
     
-    # 4. Save Results
-    df['cluster'] = labels
+    # 4. Optional: Calculate Metrics for logging
+    sil_score = kmeans.calculate_silhouette(X_final)
+    print(f"Cluster Inertia (WCSS): {kmeans.inertia_:.2f}")
+    print(f"Silhouette Score: {sil_score:.4f}")
     
-    # Save the clustered data so that the recommendation system can use it for cosine similarity
+    # 5. Save Results
+    df['cluster'] = kmeans.labels
+    
     out_path = 'data/dataset/clustered_songs.parquet'
     df.to_parquet(out_path)
     print(f"Successfully clustered songs and saved to {out_path}")

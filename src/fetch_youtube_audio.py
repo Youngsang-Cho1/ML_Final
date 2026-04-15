@@ -40,6 +40,7 @@ def main():
             'outtmpl': file_path,
             'noplaylist': True,
             'quiet': True,
+            'noprogress': True,
             'no_warnings': True,
             'extract_flat': False
         }
