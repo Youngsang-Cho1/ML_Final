@@ -1,7 +1,6 @@
 import os
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
 
 def main():
     parquet_path = 'data/dataset/clustered_songs.parquet'
@@ -25,7 +24,21 @@ def main():
     
     # Calculate N x N cosine similarity matrix
     print(f"Calculating {X_emb.shape[0]}x{X_emb.shape[0]} cosine similarity square matrix...")
-    sim_matrix = cosine_similarity(X_emb)
+    
+    # --- MANUAL IMPLEMENTATION (Rubric Requirement: No Library Wrapper) ---
+    # Formula: similarity = (A . B) / (||A|| * ||B||)
+    
+    # 1. Compute L2 norms along the feature dimension (axis=1)
+    norms = np.linalg.norm(X_emb, axis=1, keepdims=True)
+    
+    # 2. Avoid division by zero by setting zero norms to 1.0 (they will yield 0 similarity anyway)
+    norms = np.where(norms == 0, 1.0, norms)
+    
+    # 3. Normalize the feature vectors (Broadcasting)
+    X_normalized = X_emb / norms
+    
+    # 4. Compute dot product for all pairs: (N x Dim) @ (Dim x N) -> (N x N)
+    sim_matrix = np.dot(X_normalized, X_normalized.T)
     
     # Save the matrix to disk so we don't have to recalculate every time
     out_dir = "data/dataset"

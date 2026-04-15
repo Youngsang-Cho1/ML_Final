@@ -30,7 +30,7 @@ We use a **Late Fusion** approach by applying Dimensionality Reduction (PCA) to 
 ## File Roles & Operations
 
 ### Phase 1: Data Acquisition & Preprocessing
--   `src/fetch_youtube_audio.py`: Downloads audio for the selected 1,850 songs via YouTube (M4A format).
+-   `src/fetch_youtube_audio.py`: Downloads audio for the selected 1,000 songs via YouTube (M4A format).
 -   `src/generate_spectrograms.py`: Converts audio to Mel Spectrogram images.
 -   `src/spectrogram_embedding.py`: Uses **DINOv2 (ViT-S/14)** to extract 384D latent vectors.
 -   `src/cleanup_temp_files.py`: Purges ~3GB of temporary audio/image files once vectorized.
