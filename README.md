@@ -15,6 +15,9 @@ The web app uses methods and algorithms covered in our Machine Learning course:
 - Cosine Similarity: Within a specific cluster, we apply cosine similarity to find songs that are most similar to a user’s selected song or preferred characteristics. The similarity scores rank the songs to provide the closest matches as recommendations based on actual sound rather than abstract labels. Our logic guarantees recommendations are drawn strictly from the same cluster, and we surface contextual metadata such as genres directly in the web app UI for reference.
 - PCA (Principal Component Analysis): Since 12 numerical features in a high-dimensional space can be difficult to interpret, we apply PCA to reduce dimensionality. This transforms the features into a smaller number of principal components while preserving maximum variance, allowing us to evaluate and interpret our clusters more effectively.
 
+## Features
+- **In-App Audio Playback**: You can now click on your chosen seed song or any recommended track to download and play its audio seamlessly directly in the Streamlit web application. We use `yt-dlp` in the background to automatically fetch audio from YouTube.
+
 ## Deliverables
 - Codebase: A GitHub repository containing deployable code.
 - Demo: A deployed web application built with Streamlit.

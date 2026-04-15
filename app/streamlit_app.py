@@ -3,7 +3,43 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import os
+import yt_dlp
 from sklearn.manifold import TSNE
+
+if 'playing_song' not in st.session_state:
+    st.session_state['playing_song'] = None
+
+def play_song(name, artist):
+    st.session_state['playing_song'] = {'name': name, 'artist': artist}
+
+def fetch_youtube_audio(track_name, artist_name):
+    output_dir = "data/audio_files"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    safe_name = "".join([c for c in f"{track_name} - {artist_name}" if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+    file_path = os.path.join(output_dir, f"{safe_name}.m4a")
+    
+    if os.path.exists(file_path):
+        return file_path
+        
+    query = f"ytsearch1:{track_name} {artist_name} audio"
+    
+    ydl_opts = {
+        'format': 'bestaudio[ext=m4a]', 
+        'outtmpl': file_path,
+        'noplaylist': True,
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False
+    }
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(query, download=True)
+            return file_path
+    except Exception as e:
+        st.error(f"Failed to download audio. Error: {str(e)[:200]}")
+        return None
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -104,6 +140,17 @@ with col3:
 
 st.markdown("---")
 
+# --- NOW PLAYING ---
+if st.session_state['playing_song']:
+    curr_song = st.session_state['playing_song']
+    st.markdown(f"### 🎶 Now Playing: **{curr_song['name']}** - {curr_song['artist']}")
+    
+    with st.spinner("Fetching audio from YouTube (this might take a few seconds)..."):
+        audio_path = fetch_youtube_audio(curr_song['name'], curr_song['artist'])
+        if audio_path:
+            st.audio(audio_path, format="audio/m4a", start_time=0)
+    st.markdown("---")
+
 # --- DISCOVERY ENGINE ---
 st.subheader("Select a Seed Song")
 song_list = df.apply(lambda r: f"{r['track_name']} - {r['track_artist']}", axis=1).tolist()
@@ -124,6 +171,8 @@ if selected_song_full != "Select a song...":
             <p><b>Original Genre:</b> {target_row['playlist_genre'].upper()}</p>
         </div>
         """, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.button("🎧 Play Seed Song", key="play_seed", on_click=play_song, args=(target_row['track_name'], target_row['track_artist']), use_container_width=True)
 
     with c2:
         st.subheader("Recommendations")
@@ -138,14 +187,30 @@ if selected_song_full != "Select a song...":
         # Zero out (-1) similarities for songs not in the same cluster
         sim_scores[~same_cluster_mask] = -1
         
-        # Sort and get the top 6 (including the seed song itself at index 0)
-        similar_indices = np.argsort(sim_scores)[-6:][::-1]
+        # Sort all similarity scores in descending order
+        all_sorted_indices = np.argsort(sim_scores)[::-1]
+        
+        # Filter for top 5 unique recommendations (excluding the seed song)
+        unique_recs = []
+        seen_songs = set()
+        seen_songs.add((target_row['track_name'], target_row['track_artist']))
+        
+        for neighbor_idx in all_sorted_indices:
+            if sim_scores[neighbor_idx] == -1:
+                break  # Reached cluster boundary where sim is -1
+            
+            neighbor = df.iloc[neighbor_idx]
+            song_identifier = (neighbor['track_name'], neighbor['track_artist'])
+            
+            if song_identifier not in seen_songs:
+                seen_songs.add(song_identifier)
+                unique_recs.append(neighbor_idx)
+                
+            if len(unique_recs) == 5:
+                break
         
         cols = st.columns(5)
-        for i, neighbor_idx in enumerate(similar_indices[1:]):
-            if sim_scores[neighbor_idx] == -1:
-                break
-                
+        for i, neighbor_idx in enumerate(unique_recs):
             neighbor = df.iloc[neighbor_idx]
             
             # Show the genre of the recommended songs
@@ -153,13 +218,15 @@ if selected_song_full != "Select a song...":
             
             with cols[i]:
                 st.markdown(f"""
-                <div class="song-card" style="font-size: 0.9rem; padding: 1rem; height: 190px;">
+                <div class="song-card" style="font-size: 0.9rem; padding: 1rem; min-height: 160px; height: auto;">
                     <p style="font-weight: bold; margin-bottom: 5px;">{neighbor['track_name']}</p>
                     <p style="color: #888; font-size: 0.8rem; margin-bottom: 2px;">{neighbor['track_artist']}</p>
                     <p style="color: #666; font-size: 0.7rem; margin-bottom: 5px;">{genre}</p>
                     <p style="color: #4B6CB7; font-size: 0.7rem; font-weight: bold;">{sim_scores[neighbor_idx]:.2f} Sim</p>
                 </div>
                 """, unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+                st.button("🎧 Play", key=f"play_rec_{neighbor_idx}", on_click=play_song, args=(neighbor['track_name'], neighbor['track_artist']), use_container_width=True)
 
 st.markdown("---")
 
