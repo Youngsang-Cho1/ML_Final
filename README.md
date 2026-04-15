@@ -37,7 +37,7 @@ If you'd like to download audio locally into `.m4a` files using YouTube and embe
    ```sh
    python src/fetch_youtube_audio.py
    ```
-   This will read the first 10 tracks from `data/dataset/spotify_songs.csv` and download the `.m4a` audio directly into the `data/audio_files/` directory.
+   This will read the first 1,000 tracks from `data/dataset/spotify_songs.csv` and download the `.m4a` audio directly into the `data/audio_files/` directory.
 
 3. **Convert to Spectrograms**:
    Once you have downloaded the audio preview files, you can generate image spectrograms for them by running:

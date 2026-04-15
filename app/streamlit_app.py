@@ -68,7 +68,7 @@ st.markdown("""
 # --- DATA LOADING ---
 @st.cache_data
 def load_data():
-    df = pd.read_parquet('data/dataset/clustered_songs.parquet')
+    df = pd.read_parquet('data/dataset/master_music_data.parquet')
     sim_matrix = np.load('data/dataset/cosine_sim_matrix.npy')
     return df, sim_matrix
 
@@ -84,8 +84,14 @@ with st.sidebar:
     st.title("Settings & Info")
     st.markdown("---")
     st.write("**Model:** DINOv2 (ViT-S/14)")
-    st.write("**Data Size:** 1,850 Songs")
+    st.write(f"**Data Size:** {len(df):,} Songs")
     st.write("**Fusion:** 35D PCA Fused Space")
+    st.markdown("---")
+    recommendation_mode = st.radio(
+        "Recommendation Mode",
+        ("Within Cluster", "Global Search"),
+        help="Choose whether to search for similar songs across the entire dataset or restricted to the song's cluster."
+    )
     st.markdown("---")
     st.info("This engine uses Multimodal Fusion (Spectrogram Embeddings + Spotify Metadata) for similarity retrieval.")
 
@@ -124,10 +130,38 @@ if selected_song_full != "Select a song...":
             <p><b>Original Genre:</b> {target_row['playlist_genre'].upper()}</p>
         </div>
         """, unsafe_allow_html=True)
+        
+        # --- FEATURE RADAR CHART ---
+        features = ['danceability', 'energy', 'speechiness', 'acousticness', 'instrumentalness', 'liveness', 'valence']
+        feature_values = [target_row[f] for f in features]
+        
+        radar_df = pd.DataFrame(dict(r=feature_values, theta=features))
+        fig_radar = px.line_polar(radar_df, r='r', theta='theta', line_close=True, template='plotly_dark')
+        fig_radar.update_traces(fill='toself', line_color='#4B6CB7')
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+            showlegend=False,
+            height=300,
+            margin=dict(l=40, r=40, t=20, b=20)
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
 
     with c2:
         st.subheader("Recommendations")
-        similar_indices = np.argsort(sim_matrix[idx])[-6:][::-1]
+        
+        # --- RECOMMENDATION LOGIC ---
+        scores = sim_matrix[idx]
+        
+        if recommendation_mode == "Within Cluster":
+            target_cluster = target_row['cluster']
+            # Create a mask to only keep songs in the same cluster
+            cluster_mask = (df['cluster'] == target_cluster).values
+            # Filter scores (set non-cluster songs to -1.0)
+            filtered_scores = np.where(cluster_mask, scores, -1.0)
+            similar_indices = np.argsort(filtered_scores)[-6:][::-1]
+        else:
+            # Global search (current behavior)
+            similar_indices = np.argsort(scores)[-6:][::-1]
         
         cols = st.columns(5)
         for i, neighbor_idx in enumerate(similar_indices[1:]):
