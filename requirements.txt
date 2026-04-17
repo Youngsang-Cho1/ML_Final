@@ -18,3 +18,4 @@ watchdog
 langchain
 langchain-groq
 soundfile
+pydantic

@@ -50,35 +50,43 @@ class ManualKMeans:
     def calculate_silhouette(self, X):
         """
         Manually calculate the Silhouette Score for the clustering result.
-        O(N^2) complexity but manageable for ~1k points.
+        Now safely subsampled for massive datasets to avoid O(n^2) OOM crashes.
         """
         if self.labels is None:
             return 0
             
         n_samples = X.shape[0]
+        
+        if n_samples > 1000:
+            # Safely subsample 1000 random data points to calculate the silhouette
+            rng = np.random.default_rng(self.random_state)
+            sample_idx = rng.choice(n_samples, 1000, replace=False)
+            X = X[sample_idx]
+            self_labels_sample = self.labels[sample_idx]
+            n_samples = 1000
+        else:
+            self_labels_sample = self.labels
+            
         silhouette_vals = np.zeros(n_samples)
         
-        # Precompute distance matrix for efficiency if memory permits
-        # For 1k points, 1k x 1k float64 is ~8MB
+        # Precompute distance matrix on the (max 1000) samples memory footprint
         dist_matrix = np.linalg.norm(X[:, np.newaxis] - X, axis=2)
         
         for i in range(n_samples):
-            # a(i): average distance to points in the same cluster
-            cluster_i = self.labels[i]
-            same_cluster_mask = (self.labels == cluster_i).copy()  # copy to avoid in-place mutation
-            same_cluster_mask[i] = False  # exclude self
+            cluster_i = self_labels_sample[i]
+            same_cluster_mask = (self_labels_sample == cluster_i).copy() 
+            same_cluster_mask[i] = False  
             
             if np.sum(same_cluster_mask) > 0:
                 a_i = np.mean(dist_matrix[i][same_cluster_mask])
             else:
                 a_i = 0
                 
-            # b(i): minimum average distance to points in a different cluster
             b_i = float('inf')
             for k in range(self.k):
                 if k == cluster_i:
                     continue
-                other_cluster_mask = (self.labels == k)
+                other_cluster_mask = (self_labels_sample == k)
                 if np.sum(other_cluster_mask) > 0:
                     avg_dist_to_k = np.mean(dist_matrix[i][other_cluster_mask])
                     b_i = min(b_i, avg_dist_to_k)

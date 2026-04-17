@@ -7,6 +7,18 @@ except ImportError:
 
 from pydantic import BaseModel, Field
 
+class SongFeatures(BaseModel):
+    valence: float = Field(default=0.5, description="Musical positiveness or happiness (0.0 to 1.0)")
+    tempo: float = Field(default=120.0, description="Estimated tempo in beats per minute (BPM) (e.g., 80.0 to 180.0)")
+    danceability: float = Field(default=0.5, description="Suitability for dancing (0.0 to 1.0)")
+    energy: float = Field(default=0.5, description="Intensity and activity (0.0 to 1.0)")
+    loudness: float = Field(default=-10.0, description="Overall loudness in decibels (dB), typically -60 to 0")
+    speechiness: float = Field(default=0.0, description="Presence of spoken words (0.0 to 1.0)")
+    acousticness: float = Field(default=0.0, description="Probability that the track is acoustic (0.0 to 1.0)")
+    instrumentalness: float = Field(default=0.0, description="Probability that the track contains no vocals (0.0 to 1.0)")
+    liveness: float = Field(default=0.0, description="Probability that the track was performed live (0.0 to 1.0)")
+    keywords: list[str] = Field(default_factory=list, description="Extraction of genres (pop, rap, rock, latin, r&b, edm), artist names, or mood keywords found in the prompt.")
+
 def parse_text_to_features(prompt: str, api_key: str) -> dict:
     '''
     Uses LangChain and Groq to parse a user's natural language vibe description
@@ -14,11 +26,6 @@ def parse_text_to_features(prompt: str, api_key: str) -> dict:
     '''
     from langchain_groq import ChatGroq
     
-    # Define the desired output structure
-    valence: float = Field(description="Musical positiveness or happiness (0.0 to 1.0)")
-    tempo: float = Field(description="Estimated tempo in beats per minute (BPM) (e.g., 80.0 to 180.0)")
-    keywords: list[str] = Field(description="Extraction of genres (pop, rap, rock, latin, r&b, edm), artist names, or mood keywords found in the prompt.")
-        
     try:
         # Initialize Groq LLM
         llm = ChatGroq(

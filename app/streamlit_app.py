@@ -104,7 +104,7 @@ def run_clustering_sweep(features_35d):
 
 @st.cache_data
 def get_custom_clustering(features_35d, k):
-    """Performs manual clustering and returns labels and similarity matrix"""
+    """Performs manual clustering and returns labels and the normalized feature matrix for dynamic similarity computation."""
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(features_35d)
     
@@ -112,14 +112,13 @@ def get_custom_clustering(features_35d, k):
     model.fit(X_scaled)
     labels = model.labels
     
-    # Compute Cosine Similarity Matrix (Manual Implementation)
+    # Pre-normalize the huge feature matrix once, avoid O(N^2) dot product.
     fused_features = np.stack(features_35d)
     norms = np.linalg.norm(fused_features, axis=1, keepdims=True)
     norms = np.where(norms == 0, 1.0, norms)
     X_normalized = fused_features / norms
-    sim_matrix = np.dot(X_normalized, X_normalized.T)
     
-    return labels, sim_matrix
+    return labels, X_normalized
 
 # --- SESSION STATE INITIALIZATION ---
 if 'playing_song' not in st.session_state:
@@ -185,9 +184,9 @@ with st.sidebar:
     # User-Adjustable K
     chosen_k = st.slider("Select Number of Clusters (K)", 2, 15, optimal_k)
     
-    # Apply Clustering & Get Similarity Matrix
+    # Apply Clustering & Load Normalized matrix for fast queries
     with st.spinner(f"Clustering with K={chosen_k}..."):
-        new_labels, sim_matrix = get_custom_clustering(X_fused, chosen_k)
+        new_labels, X_normalized = get_custom_clustering(X_fused, chosen_k)
         df['cluster'] = new_labels
     
     st.success(f"Model clusters updated to {chosen_k} neighborhoods!")
@@ -260,8 +259,9 @@ with tab_seed:
         with c2:
             st.subheader("Recommendations")
             
-            # --- RECOMMENDATION LOGIC ---
-            sim_scores = sim_matrix[idx].copy()
+            # --- RECOMMENDATION LOGIC (On-the-fly execution) ---
+            target_vector = X_normalized[idx]
+            sim_scores = np.dot(X_normalized, target_vector) # Fast O(N) calculation
             
             if recommendation_mode == "Within Cluster":
                 target_cluster = target_row['cluster']
