@@ -112,7 +112,9 @@ def get_custom_clustering(features_35d, k):
     model.fit(X_scaled)
     labels = model.labels
     
-    # Pre-normalize the huge feature matrix once, avoid O(N^2) dot product.
+    # FIX: We pre-normalize the feature matrix here, but we DO NOT calculate 
+    # sim_matrix = np.dot(X_normalized, X_normalized.T) anymore.
+    # Constructing that N x N matrix on 30k rows uses 7.2GB of RAM and crashes the server.
     fused_features = np.stack(features_35d)
     norms = np.linalg.norm(fused_features, axis=1, keepdims=True)
     norms = np.where(norms == 0, 1.0, norms)
@@ -260,8 +262,11 @@ with tab_seed:
             st.subheader("Recommendations")
             
             # --- RECOMMENDATION LOGIC (On-the-fly execution) ---
+            # FIX: Instead of looking up scores via sim_matrix[idx] from an O(N^2) pre-loaded matrix,
+            # we execute a blazing fast O(N) vector dot-product calculation instantly.
+            # This takes milliseconds and uses less than 1MB of memory.
             target_vector = X_normalized[idx]
-            sim_scores = np.dot(X_normalized, target_vector) # Fast O(N) calculation
+            sim_scores = np.dot(X_normalized, target_vector)
             
             if recommendation_mode == "Within Cluster":
                 target_cluster = target_row['cluster']

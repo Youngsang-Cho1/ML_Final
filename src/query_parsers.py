@@ -7,6 +7,8 @@ except ImportError:
 
 from pydantic import BaseModel, Field
 
+# FIX: The Pydantic model must be explicitly wrapped in a BaseModel class.
+# If these fields were left loose, structured_llm.invoke() would crash with a NameError.
 class SongFeatures(BaseModel):
     valence: float = Field(default=0.5, description="Musical positiveness or happiness (0.0 to 1.0)")
     tempo: float = Field(default=120.0, description="Estimated tempo in beats per minute (BPM) (e.g., 80.0 to 180.0)")

@@ -58,7 +58,9 @@ class ManualKMeans:
         n_samples = X.shape[0]
         
         if n_samples > 1000:
-            # Safely subsample 1000 random data points to calculate the silhouette
+            # FIX: Previously calculated an N x N matrix. On 30,000 songs, this requires 7.2GB of RAM.
+            # We now safely subsample 1000 random data points to calculate the silhouette
+            # score without crashing Streamlit via Out-Of-Memory errors.
             rng = np.random.default_rng(self.random_state)
             sample_idx = rng.choice(n_samples, 1000, replace=False)
             X = X[sample_idx]
