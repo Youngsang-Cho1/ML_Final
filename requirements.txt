@@ -13,3 +13,8 @@ torch
 transformers
 pillow
 torchvision
+plotly
+watchdog
+langchain
+langchain-groq
+soundfile

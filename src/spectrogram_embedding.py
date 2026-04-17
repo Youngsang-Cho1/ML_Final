@@ -31,7 +31,7 @@ def main():
         print(f"Model loaded and mapped to device: {device}")
         
     except Exception as e:
-        print(f"❌ Failed to load model: {e}")
+        print(f"Failed to load model: {e}")
         return
 
     print(f"Generating DINOv2 vision embeddings for {len(spectrogram_imgs)} spectrogram images...")
@@ -59,7 +59,7 @@ def main():
                 print(f"    -> Failed to process {img_path}: {e}")
     
     if not all_embeddings:
-        print("❌ No embeddings were generated successfully.")
+        print("No embeddings were generated successfully.")
         return
         
     df = pd.DataFrame({
@@ -71,7 +71,7 @@ def main():
     
     out_parquet = os.path.join(embed_dir, "embedded_spectrograms.parquet")
     df.to_parquet(out_parquet)
-    print(f"\n✅ Successfully saved DINOv2 embeddings to {out_parquet}")
+    print(f"\nSuccessfully saved DINOv2 embeddings to {out_parquet}")
 
 if __name__ == "__main__":
     main()

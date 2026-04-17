@@ -12,7 +12,7 @@ We are using the 30,000 Spotify Songs dataset from Kaggle. It contains 23 variab
 ## Methodology
 The web app uses methods and algorithms covered in our Machine Learning course:
 - K-Means Clustering: We map each song into a vector space using its 12 numerical audio features. K-Means clustering then groups songs with similar audio characteristics into different categories. 
-- Cosine Similarity: Within a specific cluster, we apply cosine similarity to find songs that are most similar to a user’s selected song or preferred characteristics. The similarity scores rank the songs to provide the closest matches as recommendations based on actual sound rather than abstract labels.
+- Cosine Similarity: Within a specific cluster, we apply cosine similarity to find songs that are most similar to a user’s selected song or preferred characteristics. The similarity scores rank the songs to provide the closest matches as recommendations based on actual sound rather than abstract labels. Our logic guarantees recommendations are drawn strictly from the same cluster, and we surface contextual metadata such as genres directly in the web app UI for reference.
 - PCA (Principal Component Analysis): Since 12 numerical features in a high-dimensional space can be difficult to interpret, we apply PCA to reduce dimensionality. This transforms the features into a smaller number of principal components while preserving maximum variance, allowing us to evaluate and interpret our clusters more effectively.
 
 ## Deliverables
@@ -37,7 +37,7 @@ If you'd like to download audio locally into `.m4a` files using YouTube and embe
    ```sh
    python src/fetch_youtube_audio.py
    ```
-   This will read the first 10 tracks from `data/dataset/spotify_songs.csv` and download the `.m4a` audio directly into the `data/audio_files/` directory.
+   This will read the first 1,000 tracks from `data/dataset/spotify_songs.csv` and download the `.m4a` audio directly into the `data/audio_files/` directory.
 
 3. **Convert to Spectrograms**:
    Once you have downloaded the audio preview files, you can generate image spectrograms for them by running:
