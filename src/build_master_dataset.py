@@ -1,51 +1,47 @@
 import pandas as pd
 import numpy as np
 import os
+from audio_utils import get_safe_name
 
 def main():
-    # File paths
+    """
+    Synthesizes all processed data into a single 'Source of Truth' Parquet file.
+    Joins: Clustered Data + Original Spotify Metadata + Raw MFCC Embeddings.
+    """
+    # File paths for components
     original_csv = 'data/dataset/spotify_songs.csv'
-    embedded_parquet = 'data/embeddings/embedded_spectrograms.parquet'
+    embedded_parquet = 'data/embeddings/audio_features.parquet'
     clustered_parquet = 'data/dataset/clustered_songs.parquet'
     output_master = 'data/dataset/master_music_data.parquet'
 
     print("Building Master Dataset...")
 
-    # 1. Load Original Data
+    # Load All Component Dataframes
     if not os.path.exists(original_csv):
         print(f"Error: Missing {original_csv}")
         return
     df_orig = pd.read_csv(original_csv)
     
-    # 2. Load Clustered Data (Result of PCA + K-Means)
     if not os.path.exists(clustered_parquet):
         print(f"Error: Missing {clustered_parquet}. Run pipeline first.")
         return
     df_clustered = pd.read_parquet(clustered_parquet)
 
-    # 3. Load Raw DINOv2 Embeddings (384D)
     if not os.path.exists(embedded_parquet):
         print(f"Error: Missing {embedded_parquet}")
         return
     df_emb = pd.read_parquet(embedded_parquet)
 
-    # Pre-processing for clean join
-    # Create safe names for joining across different scripts
-    def get_safe_name(name, artist):
-        return "".join([c for c in f"{name} - {artist}" if c.isalpha() or c.isdigit() or c==' ']).rstrip()
-
+    # Pre-processing: Generate standardized join keys
     print("Synthesizing join keys...")
     df_orig['safe_name'] = df_orig.apply(lambda r: get_safe_name(r['track_name'], r['track_artist']), axis=1)
-    
-    # df_orig already has 'safe_name' from the apply above
-    # Create safe_name for others
     df_clustered['safe_name'] = df_clustered.apply(lambda r: get_safe_name(r['track_name'], r['track_artist']), axis=1)
-    df_emb['safe_name'] = df_emb['track_id'] # track_id in embeddings is already the safe_name
+    df_emb['safe_name'] = df_emb['track_id'] 
 
-    # 4. Perform SQL-style Joins
+    # Perform SQL-style Inner Joins to ensure only complete records are kept
     print("Performing master join...")
     
-    # Merge Clustered + Original Metadata/Features
+    # 1. Merge Clustered Results with Original Metadata
     master_df = pd.merge(
         df_clustered, 
         df_orig.drop(columns=['track_name', 'track_artist', 'playlist_genre']), 
@@ -53,7 +49,7 @@ def main():
         how='inner'
     )
     
-    # Merge with Raw Embeddings
+    # 2. Merge with Raw High-Dimensional Embeddings
     master_df = pd.merge(
         master_df,
         df_emb.drop(columns=['track_id']),
@@ -61,15 +57,12 @@ def main():
         how='inner'
     )
 
-    # 5. Cleanup
-    # drop duplicates if any arose from the metadata join
+    # Final Cleanup: Remove duplicates and reset index
     master_df = master_df.drop_duplicates(subset=['safe_name']).reset_index(drop=True)
     
-    # Identify key columns to keep for the final "Source of Truth"
-    # Metadata + Original 13 + Fused 35 + Cluster + Full 384 Embedding
     print(f"Master Dataset created with {master_df.shape[0]} songs and {master_df.shape[1]} columns.")
     
-    # 6. Save
+    # Save as Parquet for fast I/O in the Streamlit app
     master_df.to_parquet(output_master)
     print(f"Successfully saved Master Dataset to {output_master}")
 

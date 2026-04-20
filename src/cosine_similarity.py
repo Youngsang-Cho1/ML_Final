@@ -3,53 +3,61 @@ import pandas as pd
 import numpy as np
 
 def main():
-    parquet_path = 'data/dataset/clustered_songs.parquet'
+    """
+    Computes a Global Cosine Similarity Matrix for all songs in the master dataset.
+    This enables 'Seed Song' based recommendation by finding nearest neighbors in 35D space.
+    """
+    parquet_path = 'data/dataset/master_music_data.parquet'
     
     if not os.path.exists(parquet_path):
-        print(f"Cannot find {parquet_path}. Please generate clusters first.")
+        print(f"Cannot find {parquet_path}. Please run build_master_dataset.py first.")
         return
         
     print(f"Loading data from {parquet_path}...")
     df = pd.read_parquet(parquet_path)
     
-    # Check if there are any features
     if df.empty:
         print("Dataset is empty.")
         return
         
-    print(f"Loaded {df.shape[0]} songs.")
+    # Scalability Check: Calculate memory overhead for N x N matrix
+    n_songs = df.shape[0]
+    print(f"Loaded {n_songs} songs.")
     
-    # Extract the fused features (35-D vectors)
+    if n_songs > 20000:
+        # Each float64 takes 8 bytes. N^2 matrix can grow very fast.
+        memory_gb = (n_songs**2 * 8) / (1024**3)
+        print(f"WARNING: Generating an {n_songs}x{n_songs} matrix will consume ~{memory_gb:.2f} GB of memory.")
+        
+    # Extract the fused feature matrix (35D)
     X_emb = np.stack(df['fused_features'].values)
     
-    # Calculate N x N cosine similarity matrix
-    print(f"Calculating {X_emb.shape[0]}x{X_emb.shape[0]} cosine similarity square matrix...")
+    # Calculate N x N Cosine Similarity
+    print(f"Calculating {n_songs}x{n_songs} cosine similarity matrix...")
     
     # --- MANUAL IMPLEMENTATION (Rubric Requirement: No Library Wrapper) ---
     # Formula: similarity = (A . B) / (||A|| * ||B||)
     
-    # 1. Compute L2 norms along the feature dimension (axis=1)
+    # 1. Compute L2 norms along the feature dimension
     norms = np.linalg.norm(X_emb, axis=1, keepdims=True)
     
-    # 2. Avoid division by zero by setting zero norms to 1.0 (they will yield 0 similarity anyway)
-    norms = np.where(norms == 0, 1.0, norms)
+    # 2. Add epsilon to avoid division by zero
+    norms = np.where(norms == 0, 1e-9, norms)
     
-    # 3. Normalize the feature vectors (Broadcasting)
+    # 3. Normalize vectors to unit length
     X_normalized = X_emb / norms
     
-    # 4. Compute dot product for all pairs: (N x Dim) @ (Dim x N) -> (N x N)
+    # 4. Matrix Multiplication: (N x 35) @ (35 x N) -> (N x N)
+    # The result is the dot product of normalized vectors, which IS cosine similarity.
     sim_matrix = np.dot(X_normalized, X_normalized.T)
     
-    # Save the matrix to disk so we don't have to recalculate every time
+    # Save the matrix as a binary NumPy file for fast loading in Streamlit
     out_dir = "data/dataset"
     os.makedirs(out_dir, exist_ok=True)
     matrix_path = os.path.join(out_dir, 'cosine_sim_matrix.npy')
     
     np.save(matrix_path, sim_matrix)
-    print(f"Similarity matrix saved to {matrix_path}")
-    print("-" * 50)
-    
-    print("Matrix generation complete. You can now use this matrix in the application service.")
+    print(f"Similarity matrix successfully saved to {matrix_path}")
 
 if __name__ == "__main__":
     main()

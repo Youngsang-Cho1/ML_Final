@@ -9,9 +9,11 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from sklearn.manifold import TSNE
-from src.query_parsers import parse_text_to_features, parse_audio_to_features
+from src.query_parsers import parse_text_to_features
 from src.clustering import ManualKMeans
 from src.audio_utils import fetch_youtube_audio
+from src.audio_feature_extractor import extract_audio_features
+import pickle
 from sklearn.preprocessing import StandardScaler
 from dotenv import load_dotenv
 
@@ -48,12 +50,19 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     div.stButton > button:first-child {
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.2s ease-in-out;
+    }
+    div.stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #2563EB 0%, #06B6D4 100%);
         color: white;
         border: none;
-        padding: 0.5rem 2rem;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.4);
+    }
+    div.stButton > button[kind="primary"]:hover {
+        transform: scale(1.02);
+        box-shadow: 0 6px 8px -1px rgba(37, 99, 235, 0.6);
     }
     .song-card {
         background: #FFFFFF;
@@ -85,12 +94,15 @@ st.markdown("""
 # --- CLUSTERING OPTIMIZATION LOGIC ---
 @st.cache_data
 def run_clustering_sweep(features_35d):
-    """Computes Inertia and Silhouette scores for K in [2, 15]"""
+    """
+    Evaluates different K values for K-Means using Inertia (Elbow) and Silhouette Scores.
+    Helps the user pick the mathematically optimal number of clusters.
+    """
     k_range = range(2, 16)
     inertias = []
     silhouettes = []
     
-    # Scale features for clustering
+    # Standardize data before clustering
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(features_35d)
     
@@ -104,15 +116,19 @@ def run_clustering_sweep(features_35d):
 
 @st.cache_data
 def get_custom_clustering(features_35d, k):
-    """Performs manual clustering and returns labels and similarity matrix"""
+    """
+    Performs the final K-Means clustering with the user-selected K.
+    Also returns a fresh dot-product based Cosine Similarity matrix.
+    """
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(features_35d)
     
+    # 1. Clustering
     model = ManualKMeans(n_clusters=k, random_state=42)
     model.fit(X_scaled)
     labels = model.labels
     
-    # Compute Cosine Similarity Matrix (Manual Implementation)
+    # 2. Similarity Calculation (Manual implementation)
     fused_features = np.stack(features_35d)
     norms = np.linalg.norm(fused_features, axis=1, keepdims=True)
     norms = np.where(norms == 0, 1.0, norms)
@@ -122,6 +138,7 @@ def get_custom_clustering(features_35d, k):
     return labels, sim_matrix
 
 # --- SESSION STATE INITIALIZATION ---
+# Manages the global state of the application (e.g., currently playing preview)
 if 'playing_song' not in st.session_state:
     st.session_state['playing_song'] = None
 
@@ -131,8 +148,11 @@ def play_song(name, artist):
 # --- DATA LOADING ---
 @st.cache_data
 def load_base_data():
+    """
+    Loads the 'Source of Truth' master dataset with all fused features.
+    Cached to ensure near-instant page reloads.
+    """
     df = pd.read_parquet('data/dataset/master_music_data.parquet')
-    # Extract fused features once
     fused_features = np.stack(df['fused_features'].values)
     return df, fused_features
 
@@ -161,7 +181,7 @@ except Exception as e:
 with st.sidebar:
     st.title("Settings & Info")
     st.markdown("---")
-    st.write("**Model:** DINOv2 (ViT-S/14)")
+    st.write("**Model:** Librosa (MFCC/Chroma)")
     st.write("**Algorithm:** Manual K-Means (NumPy)")
     
     st.markdown("### 🛠️ Model Optimization")
@@ -191,17 +211,22 @@ with st.sidebar:
         df['cluster'] = new_labels
     
     st.success(f"Model clusters updated to {chosen_k} neighborhoods!")
-    st.markdown("---")
-    st.write(f"**Data Size:** {len(df):,} Songs")
-    st.write("**Fusion:** 35D PCA Fused Space")
-    st.markdown("---")
+    
+    st.markdown("""
+    <div style="background: white; border: 2px solid #3B82F6; padding: 20px; border-radius: 12px; margin-top: 15px;">
+        <h3 style="color: #1E3A8A; margin-top: 0; font-family: 'Outfit', sans-serif;">🎯 Search Scope Override</h3>
+        <p style="color: #64748B; font-size: 0.95rem; margin-bottom: 10px;">
+            Determines whether the <strong>Seed Song</strong> and <strong>Vibe</strong> searches should be limited to matching clusters, or search the entire global space.
+        </p>
+    """, unsafe_allow_html=True)
+    
     recommendation_mode = st.radio(
-        "Recommendation Mode",
+        "Select Scope Strategy:",
         ("Within Cluster", "Global Search"),
-        help="Choose whether to search for similar songs across the entire dataset or restricted to the song's cluster."
+        horizontal=True,
+        label_visibility="collapsed"
     )
-    st.markdown("---")
-    st.info("This engine uses Multimodal Fusion (Spectrogram Embeddings + Spotify Metadata) for similarity retrieval.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # --- HEADER ---
 st.markdown('<h1 class="main-header">Discovery Engine</h1>', unsafe_allow_html=True)
@@ -212,14 +237,29 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.metric("Total Songs", len(df))
 with col2:
-    st.metric("Clusters", df['cluster'].nunique())
+    st.metric("Data Dimensions", "45D Space")
 with col3:
-    st.metric("Inference Latency", "0.1s")
+    st.metric("Clusters", df['cluster'].nunique())
 
 st.markdown("---")
 
+# --- GLOBAL PLAYER SECTION ---
+if st.session_state.get('playing_song'):
+    curr = st.session_state['playing_song']
+    st.markdown(f"""
+    <div style="background: rgba(37, 99, 235, 0.1); border: 1px solid #2563EB; padding: 10px; border-radius: 10px; margin-bottom: 20px;">
+        <span style="color: #2563EB; font-weight: bold;">🔊 NOW PREVIEWING:</span> {curr['name']} - {curr['artist']}
+    </div>
+    """, unsafe_allow_html=True)
+    with st.spinner("Streaming from YouTube..."):
+        path = fetch_youtube_audio(curr['name'], curr['artist'])
+        if path:
+            st.audio(path, format="audio/m4a", autoplay=True)
+        else:
+            st.error("Could not fetch audio for this track.")
+
 # --- DISCOVERY ENGINE ---
-tab_seed, tab_text, tab_audio = st.tabs(["🎧 Seed Song", "💬 Text Vibe (LLM)", "🎤 Humming"])
+tab_seed, tab_text, tab_discovery = st.tabs(["🎧 Seed Song", "💬 Text Vibe (LLM)", "🔍 Analyze Any Song"])
 
 with tab_seed:
     st.subheader("Select a Seed Song")
@@ -241,6 +281,12 @@ with tab_seed:
                 <p><b>Original Genre:</b> {target_row['playlist_genre'].upper()}</p>
             </div>
             """, unsafe_allow_html=True)
+            
+            # --- NEW: Seed Song Playback ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🎧 PLAY SEED SONG (YOUTUBE)", key="play_seed", type="primary", use_container_width=True):
+                play_song(target_row['track_name'], target_row['track_artist'])
+                st.rerun()
             
             # --- FEATURE RADAR CHART ---
             features = ['danceability', 'energy', 'speechiness', 'acousticness', 'instrumentalness', 'liveness', 'valence']
@@ -294,20 +340,6 @@ with tab_seed:
                 if len(unique_recs) >= 5:
                     break
             
-            # --- GLOBAL PLAYER SECTION ---
-            if st.session_state['playing_song']:
-                curr = st.session_state['playing_song']
-                st.markdown(f"""
-                <div style="background: rgba(37, 99, 235, 0.1); border: 1px solid #2563EB; padding: 10px; border-radius: 10px; margin-bottom: 20px;">
-                    <span style="color: #2563EB; font-weight: bold;">🔊 NOW PREVIEWING:</span> {curr['name']} - {curr['artist']}
-                </div>
-                """, unsafe_allow_html=True)
-                with st.spinner("Streaming from YouTube..."):
-                    path = fetch_youtube_audio(curr['name'], curr['artist'])
-                    if path:
-                        st.audio(path, format="audio/m4a", autoplay=True)
-                    else:
-                        st.error("Could not fetch audio for this track.")
 
             cols = st.columns(5)
             for i, neighbor_idx in enumerate(unique_recs):
@@ -323,7 +355,9 @@ with tab_seed:
                         <p style="color: #2563EB; font-size: 0.7rem; font-weight: bold;">{sim_scores[neighbor_idx]:.2f} Sim</p>
                     </div>
                     """, unsafe_allow_html=True)
-                    st.button("🎧 Preview", key=f"play_{neighbor_idx}", on_click=play_song, args=(neighbor['track_name'], neighbor['track_artist']), use_container_width=True)
+                    if st.button("Preview", key=f"seed_prev_{neighbor_idx}"):
+                        play_song(neighbor['track_name'], neighbor['track_artist'])
+                        st.rerun()
 
 with tab_text:
     st.subheader("Describe Your Vibe")
@@ -338,120 +372,172 @@ with tab_text:
             with st.spinner("Analyzing vibe via LLM..."):
                 try:
                     query_features = parse_text_to_features(user_prompt, api_key)
-                    st.success("Analysis Complete!")
-                    
                     # --- HYBRID FILTERING LOGIC ---
                     keywords = query_features.get('keywords', [])
                     filtered_df = df.copy()
                     is_filtered = False
                     
                     if keywords:
-                        # Combine keywords into a regex pattern
                         pattern = '|'.join(keywords)
-                        # Check genre, artist, and track name columns
                         mask = (
                             df['playlist_genre'].str.contains(pattern, case=False, na=False) |
                             df['playlist_subgenre'].str.contains(pattern, case=False, na=False) |
                             df['track_artist'].str.contains(pattern, case=False, na=False) |
                             df['track_name'].str.contains(pattern, case=False, na=False)
                         )
-                        
                         potential_matches = df[mask]
                         if not potential_matches.empty:
                             filtered_df = potential_matches
                             is_filtered = True
-                            st.info(f"🔍 Filtering by keywords: {', '.join(keywords)}")
-                        else:
-                            st.warning(f"⚠️ No exact matches for '{', '.join(keywords)}'. Falling back to global vibe search.")
 
-                    # Manual feature space match against 12 original features
                     feature_cols = ['danceability', 'energy', 'loudness', 'speechiness', 'acousticness', 'instrumentalness', 'liveness', 'valence', 'tempo']
-                    
-                    # Normalize query to subset of columns
                     query_vec = np.array([query_features.get(c, 0) for c in feature_cols])
-                    
-                    # Create filtered dataset matrix
                     db_matrix = filtered_df[feature_cols].copy()
-                    
-                    # Normalize tempo and loudness column to 0-1 range to match others loosely
                     db_matrix['tempo'] = db_matrix['tempo'] / 200.0
                     db_matrix['loudness'] = (db_matrix['loudness'] + 60) / 60.0
-                    
                     query_vec[feature_cols.index('tempo')] /= 200.0
                     query_vec[feature_cols.index('loudness')] = (query_vec[feature_cols.index('loudness')] + 60) / 60.0
                     
-                    # Euclidean distance search
                     db_matrix_np = db_matrix.values
                     distances = np.linalg.norm(db_matrix_np - query_vec, axis=1)
-                    
-                    # Top 5 closest
                     best_indices = np.argsort(distances)[:5]
                     
-                    st.subheader("Vibe Matches" if not is_filtered else "Best Matches in Category")
-                    cols = st.columns(5)
-                    for i, idx_match in enumerate(best_indices):
-                        match_row = filtered_df.iloc[idx_match]
-                        with cols[i]:
-                            st.markdown(f"""
-                            <div class="song-card" style="font-size: 0.9rem; padding: 1rem; height: 180px;">
-                                <p style="font-weight: bold; margin-bottom: 5px;">{match_row['track_name']}</p>
-                                <p style="color: #888; font-size: 0.8rem; margin-bottom: 2px;">{match_row['track_artist']}</p>
-                                <p style="color: #4B6CB7; font-size: 0.7rem; font-weight: bold;">Dist: {distances[idx_match]:.2f}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
+                    st.session_state['text_results'] = {
+                        'prompt': user_prompt,
+                        'indices': best_indices,
+                        'distances': distances,
+                        'filtered_df': filtered_df,
+                        'is_filtered': is_filtered,
+                        'keywords': keywords
+                    }
                 except Exception as e:
                     st.error(str(e))
-
-with tab_audio:
-    st.subheader("Hum a Tune")
-    st.markdown("Upload a short `.wav` file of you humming to find songs with a similar Tempo and Energy.")
-    uploaded_file = st.file_uploader("Upload Audio", type=['wav', 'mp3', 'ogg'])
     
-    if uploaded_file is not None:
-        if st.button("Search by Audio"):
-            with st.spinner("Extracting Librosa features..."):
-                import tempfile
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
-                
+    if st.session_state.get('text_results') and st.session_state['text_results']['prompt'] == user_prompt:
+        res = st.session_state['text_results']
+        st.success("Analysis Complete!")
+        if res['is_filtered']:
+            st.info(f"🔍 Filtering by keywords: {', '.join(res['keywords'])}")
+        elif res['keywords']:
+            st.warning(f"⚠️ No exact matches for '{', '.join(res['keywords'])}'. Falling back to global vibe search.")
+            
+        st.subheader("Vibe Matches" if not res['is_filtered'] else "Best Matches in Category")
+        cols = st.columns(5)
+        for i, idx_match in enumerate(res['indices']):
+            match_row = res['filtered_df'].iloc[idx_match]
+            with cols[i]:
+                st.markdown(f"""
+                <div class="song-card" style="font-size: 0.9rem; padding: 1rem; height: 180px;">
+                    <p style="font-weight: bold; margin-bottom: 5px;">{match_row['track_name']}</p>
+                    <p style="color: #888; font-size: 0.8rem; margin-bottom: 2px;">{match_row['track_artist']}</p>
+                    <p style="color: #4B6CB7; font-size: 0.7rem; font-weight: bold;">Dist: {res['distances'][idx_match]:.2f}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("Preview", key=f"txt_prev_{i}"):
+                    play_song(match_row['track_name'], match_row['track_artist'])
+                    st.rerun()
+
+with tab_discovery:
+    st.subheader("Discover & Analyze Any Song")
+    st.markdown("Search for any song on YouTube. We will download it, extract its audio features, and map it into our **45D musical space** (95% variance coverage).")
+    
+    col_input, col_sliders = st.columns([1, 1])
+    
+    with col_input:
+        search_query = st.text_input("YouTube Search", placeholder="e.g. NewJean - Super Shy")
+        st.info("💡 Since we don't have Spotify metadata for new songs, please help us tune the 'vibe' below.")
+
+    with col_sliders:
+        st.write("**Manual Metadata Tuning**")
+        s_valence = st.slider("Valence (Happiness)", 0.0, 1.0, 0.5)
+        s_energy = st.slider("Energy", 0.0, 1.0, 0.5)
+        s_dance = st.slider("Danceability", 0.0, 1.0, 0.5)
+        s_tempo = st.slider("Tempo (BPM estimate)", 60, 180, 120)
+        s_pop = st.slider("Popularity", 0, 100, 50)
+
+    if search_query:
+        if st.button("🚀 Analyze & Match"):
+            with st.spinner("Step 1: Downloading from YouTube..."):
                 try:
-                    audio_features = parse_audio_to_features(tmp_path)
-                    os.remove(tmp_path)
+                    tmp_path = fetch_youtube_audio(search_query, "")
+                    st.audio(tmp_path)
                     
-                    st.success("Extracted Audio Signature:")
-                    st.json(audio_features)
+                    with st.spinner("Step 2: Extracting 58D Librosa Features..."):
+                        raw_audio_features = extract_audio_features(tmp_path)
                     
-                    # Feature space match (Tempo + Energy)
-                    query_tempo = audio_features['tempo'] / 200.0
-                    query_energy = audio_features['energy']
-                    
-                    db_matrix = df[['tempo', 'energy']].copy()
-                    db_matrix['tempo'] = db_matrix['tempo'] / 200.0
-                    
-                    distances = np.sqrt((db_matrix['tempo'] - query_tempo)**2 + (db_matrix['energy'] - query_energy)**2)
-                    best_indices = np.argsort(distances.values)[:5]
-                    
-                    st.subheader("Audio Matches")
-                    cols = st.columns(5)
-                    for i, idx_match in enumerate(best_indices):
-                        match_row = df.iloc[idx_match]
-                        with cols[i]:
-                            st.markdown(f"""
-                            <div class="song-card" style="font-size: 0.9rem; padding: 1rem; height: 180px;">
-                                <p style="font-weight: bold; margin-bottom: 5px;">{match_row['track_name']}</p>
-                                <p style="color: #888; font-size: 0.8rem; margin-bottom: 2px;">{match_row['track_artist']}</p>
-                                <p style="color: #4B6CB7; font-size: 0.7rem; font-weight: bold;">BPM: {match_row['tempo']:.0f}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
+                    with st.spinner("Step 3: Dimensionality Reduction (PCA)..."):
+                        with open('models/audio_pca.pkl', 'rb') as f:
+                            a_model = pickle.load(f)
+                        with open('models/metadata_pca.pkl', 'rb') as f:
+                            m_model = pickle.load(f)
+                        with open('models/cluster_model.pkl', 'rb') as f:
+                            c_model = pickle.load(f)
+
+                        a_scaled = a_model['scaler'].transform(raw_audio_features.reshape(1, -1))
+                        a_pca = a_model['pca'].transform(a_scaled)
+
+                        meta_raw = np.array([[s_pop, s_dance, s_energy, 0, -5, 1, 0.05, 0.1, 0, 0.1, s_valence, s_tempo, 200000]])
+                        m_scaled = m_model['scaler'].transform(meta_raw)
+                        m_pca = m_model['pca'].transform(m_scaled)
+
+                        # Fused Vector (11D + 34D = 45D)
+                        fused_vec = np.hstack((m_pca, a_pca))
+
+                    with st.spinner("Step 4: Mapping to Sonic Neighborhood..."):
+                        fused_scaled = c_model['scaler'].transform(fused_vec)
+                        centroids = c_model['centroids']
+                        dist_to_centers = np.linalg.norm(centroids - fused_scaled, axis=1)
+                        cluster_id = np.argmin(dist_to_centers)
+
+                    with st.spinner("Step 5: Finding Similar Songs..."):
+                        all_fused = np.stack(df['fused_features'].values)
+                        norms_db = np.linalg.norm(all_fused, axis=1)
+                        norm_q = np.linalg.norm(fused_vec)
+                        
+                        similarities = (all_fused @ fused_vec.T).flatten() / (norms_db * norm_q)
+                        top_indices = np.argsort(similarities)[::-1][:5]
+                        
+                    st.session_state['discovery_results'] = {
+                        'query': search_query,
+                        'cluster_id': cluster_id,
+                        'top_indices': top_indices,
+                        'similarities': similarities
+                    }
+
                 except Exception as e:
-                    st.error(str(e))
+                    st.error(f"Analysis failed: {e}")
+                    
+        if st.session_state.get('discovery_results') and st.session_state['discovery_results']['query'] == search_query:
+            res = st.session_state['discovery_results']
+            st.success(f"Analysis Complete! This song belongs to **Cluster {res['cluster_id']}**.")
+            
+            cluster_songs = df[df['cluster'] == res['cluster_id']]
+            top_genres = cluster_songs['playlist_genre'].value_counts(normalize=True).head(3)
+            genre_str = ", ".join([f"{g.upper()} ({p*100:.1f}%)" for g, p in top_genres.items()])
+            st.info(f"📍 **Neighborhood Vibe:** Primarily {genre_str}")
+
+            st.subheader("Similar Tracks in Database")
+            cols = st.columns(5)
+            for i, idx_match in enumerate(res['top_indices']):
+                match_row = df.iloc[idx_match]
+                with cols[i]:
+                    st.markdown(f"""
+                    <div class="song-card" style="height: 200px;">
+                        <p style="font-weight: bold; margin-bottom: 5px;">{match_row['track_name']}</p>
+                        <p style="color: #888; font-size: 0.8rem; margin-bottom: 10px;">{match_row['track_artist']}</p>
+                        <span class="cluster-tag" style="background: #E2E8F0; color: #475569;">Sim: {res['similarities'][idx_match]*100:.1f}%</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("Preview", key=f"disc_prev_{i}"):
+                        play_song(match_row['track_name'], match_row['track_artist'])
+                        st.rerun()
+
 
 st.markdown("---")
 
 # --- CLUSTER MAP (3D t-SNE) ---
 st.subheader("Musical Landscape (3D Projection)")
-st.markdown("Mapping 35D multimodal space into 3D using t-SNE. Clusters represent shared sonic characteristics.")
+st.markdown("Mapping **45D multimodal space** into 3D using t-SNE. Clusters represent shared sonic characteristics.")
 
 @st.cache_data
 def get_3d_projection(_df):
