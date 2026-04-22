@@ -117,13 +117,48 @@ def main():
     scaler = StandardScaler()
     X_final = scaler.fit_transform(X_fused)
     
-    # 3. Manual K-Means Clustering
     n_clusters = 10 
-    print(f"Running Manual K-Means with {n_clusters} clusters (Rubric Compliant)...")
+    
+    # 2.5 Compute Laplacian Coordinates (Spectral Approach based on RBF Kernel)
+    from sklearn.metrics.pairwise import rbf_kernel
+    # Adjusted gamma from 100 to 0.1 because standard scaled features have large distances 
+    # and gamma=100 makes the kernel matrix an identity matrix (all distances -> 0 similarity)
+    gamma = 0.1
+    print("Computing RBF Kernel and Laplacian...")
+    K = rbf_kernel(X_final, X_final, gamma=gamma)
+    
+    # Compute degree matrix and laplacian
+    D_diag = K @ np.ones(K.shape[0])
+    D = np.diag(D_diag)
+    L = D - K
+    print("Computing Eigendecomposition...")
+    eigval, eigvec = np.linalg.eigh(L)
+    
+    n_vecs = n_clusters
+    
+    # Reconstruct the matrix using the smallest eigenvalues
+    eigvals_filtered = np.zeros_like(eigval)
+    # The first n_vecs eigenvalues are the smallest (and 0 is the smallest)
+    eigvals_filtered[:n_vecs] = eigval[:n_vecs]
+    D_mat = np.diag(eigvals_filtered)
+    
+    C = eigvec
+    # Since C is orthogonal, C^-1 is C.T, but we'll use np.linalg.inv to match the requested format
+    C_INV = np.linalg.inv(C)
+    vals = C @ D_mat @ C_INV
+    
+    # We pass the laplacian coordinates (vals) to our clustering algorithm
+    # Standardize it so that values aren't too small (which causes KMeans to exit on tol immediately)
+    scaler_vals = StandardScaler()
+    X_clustering = scaler_vals.fit_transform(np.real(vals))
+    
+    # 3. Manual K-Means Clustering
+    print(f"Running Manual K-Means with {n_clusters} clusters on Laplacian Coordinates...")
     kmeans = ManualKMeans(n_clusters=n_clusters, random_state=42)
-    kmeans.fit(X_final)
+    kmeans.fit(X_clustering)
     
     # 4. Optional: Calculate Metrics for logging
+    # Calculate silhouette score on original features (X_final) since X_clustering is dense 976-dimensional laplacian coords
     sil_score = kmeans.calculate_silhouette(X_final)
     print(f"Cluster Inertia (WCSS): {kmeans.inertia_:.2f}")
     print(f"Silhouette Score: {sil_score:.4f}")

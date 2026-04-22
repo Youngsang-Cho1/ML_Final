@@ -219,6 +219,23 @@ with col3:
 
 st.markdown("---")
 
+# --- GLOBAL PLAYER SECTION ---
+if st.session_state.get('playing_song'):
+    curr = st.session_state['playing_song']
+    st.markdown(f"""
+    <div style="background: rgba(37, 99, 235, 0.1); border: 1px solid #2563EB; padding: 10px; border-radius: 10px; margin-bottom: 20px;">
+        <span style="color: #2563EB; font-weight: bold;">🔊 NOW PREVIEWING:</span> {curr['name']} - {curr['artist']}
+    </div>
+    """, unsafe_allow_html=True)
+    with st.spinner("Streaming from YouTube..."):
+        path = fetch_youtube_audio(curr['name'], curr['artist'])
+        if path:
+            st.audio(path, format="audio/m4a", autoplay=True)
+        else:
+            st.error("Could not fetch audio for this track.")
+
+st.markdown("---")
+
 # --- DISCOVERY ENGINE ---
 tab_seed, tab_text, tab_audio = st.tabs(["🎧 Seed Song", "💬 Text Vibe (LLM)", "🎤 Humming"])
 
@@ -242,6 +259,8 @@ with tab_seed:
                 <p><b>Original Genre:</b> {target_row['playlist_genre'].upper()}</p>
             </div>
             """, unsafe_allow_html=True)
+            
+            st.button("🎧 Preview Seed Song", key="play_seed", on_click=play_song, args=(target_row['track_name'], target_row['track_artist']), use_container_width=True)
             
             # --- FEATURE RADAR CHART ---
             features = ['danceability', 'energy', 'speechiness', 'acousticness', 'instrumentalness', 'liveness', 'valence']
@@ -299,21 +318,6 @@ with tab_seed:
                 if len(unique_recs) >= 5:
                     break
             
-            # --- GLOBAL PLAYER SECTION ---
-            if st.session_state['playing_song']:
-                curr = st.session_state['playing_song']
-                st.markdown(f"""
-                <div style="background: rgba(37, 99, 235, 0.1); border: 1px solid #2563EB; padding: 10px; border-radius: 10px; margin-bottom: 20px;">
-                    <span style="color: #2563EB; font-weight: bold;">🔊 NOW PREVIEWING:</span> {curr['name']} - {curr['artist']}
-                </div>
-                """, unsafe_allow_html=True)
-                with st.spinner("Streaming from YouTube..."):
-                    path = fetch_youtube_audio(curr['name'], curr['artist'])
-                    if path:
-                        st.audio(path, format="audio/m4a", autoplay=True)
-                    else:
-                        st.error("Could not fetch audio for this track.")
-
             cols = st.columns(5)
             for i, neighbor_idx in enumerate(unique_recs):
                 neighbor = df.iloc[neighbor_idx]

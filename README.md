@@ -11,13 +11,13 @@ We are using the 30,000 Spotify Songs dataset from Kaggle. It contains 23 variab
 
 ## Methodology
 The web app uses methods and algorithms covered in our Machine Learning course:
-- K-Means Clustering: We map each song into a vector space using its 12 numerical audio features. K-Means clustering then groups songs with similar audio characteristics into different categories. 
+- Spectral & K-Means Clustering: We map each song into a vector space using its 12 numerical audio features and compute Laplacian Coordinates using an RBF Kernel. K-Means clustering is then run on these Laplacian mappings to group songs with similar audio characteristics into different categories. 
 - Cosine Similarity: Within a specific cluster, we apply cosine similarity to find songs that are most similar to a user’s selected song or preferred characteristics. The similarity scores rank the songs to provide the closest matches as recommendations based on actual sound rather than abstract labels. Our logic guarantees recommendations are drawn strictly from the same cluster, and we surface contextual metadata such as genres directly in the web app UI for reference.
 - PCA (Principal Component Analysis): Since 12 numerical features in a high-dimensional space can be difficult to interpret, we apply PCA to reduce dimensionality. This transforms the features into a smaller number of principal components while preserving maximum variance, allowing us to evaluate and interpret our clusters more effectively.
 
 ## Deliverables
 - Codebase: A GitHub repository containing deployable code.
-- Demo: A deployed web application built with Streamlit.
+- Demo: A deployed web application built with Streamlit, now featuring live audio previews for any queried or recommended song using YouTube fetching!
 - Presentation: A live demonstration to be presented during the final weeks of the course.
 
 ## Repository Structure
