@@ -1,70 +1,48 @@
 import pandas as pd
 import numpy as np
-import os
-from audio_utils import get_safe_name
+from pathlib import Path
+
+try:
+    from src.audio_utils import get_safe_name
+except ImportError:
+    from audio_utils import get_safe_name
+
+PROJECT_ROOT = Path(__file__).parent.parent
+
 
 def main():
-    """
-    Synthesizes all processed data into a single 'Source of Truth' Parquet file.
-    Joins: Clustered Data + Original Spotify Metadata + Raw MFCC Embeddings.
-    """
-    # File paths for components
-    original_csv = 'data/dataset/spotify_songs.csv'
-    embedded_parquet = 'data/embeddings/audio_features.parquet'
-    clustered_parquet = 'data/dataset/clustered_songs.parquet'
-    output_master = 'data/dataset/master_music_data.parquet'
+    processed_csv = PROJECT_ROOT / 'data/dataset/processed_songs.csv'
+    embedding_parquet = PROJECT_ROOT / 'data/embeddings/audio_features.parquet'
+    output_master = PROJECT_ROOT / 'data/dataset/master_music_data.parquet'
 
     print("Building Master Dataset...")
 
-    # Load All Component Dataframes
-    if not os.path.exists(original_csv):
-        print(f"Error: Missing {original_csv}")
+    if not processed_csv.exists():
+        print(f"Error: Missing {processed_csv}")
         return
-    df_orig = pd.read_csv(original_csv)
-    
-    if not os.path.exists(clustered_parquet):
-        print(f"Error: Missing {clustered_parquet}. Run pipeline first.")
+    if not embedding_parquet.exists():
+        print(f"Error: Missing {embedding_parquet}")
         return
-    df_clustered = pd.read_parquet(clustered_parquet)
 
-    if not os.path.exists(embedded_parquet):
-        print(f"Error: Missing {embedded_parquet}")
-        return
-    df_emb = pd.read_parquet(embedded_parquet)
+    df_meta = pd.read_csv(processed_csv)
+    df_emb = pd.read_parquet(embedding_parquet)
 
-    # Pre-processing: Generate standardized join keys
-    print("Synthesizing join keys...")
-    df_orig['safe_name'] = df_orig.apply(lambda r: get_safe_name(r['track_name'], r['track_artist']), axis=1)
-    df_clustered['safe_name'] = df_clustered.apply(lambda r: get_safe_name(r['track_name'], r['track_artist']), axis=1)
-    df_emb['safe_name'] = df_emb['track_id'] 
-
-    # Perform SQL-style Inner Joins to ensure only complete records are kept
-    print("Performing master join...")
-    
-    # 1. Merge Clustered Results with Original Metadata
-    master_df = pd.merge(
-        df_clustered, 
-        df_orig.drop(columns=['track_name', 'track_artist', 'playlist_genre']), 
-        on='safe_name', 
-        how='inner'
+    df_meta['safe_name'] = df_meta.apply(
+        lambda r: get_safe_name(r['track_name'], r['track_artist']), axis=1
     )
-    
-    # 2. Merge with Raw High-Dimensional Embeddings
-    master_df = pd.merge(
-        master_df,
-        df_emb.drop(columns=['track_id']),
-        on='safe_name', 
-        how='inner'
-    )
+    df_emb = df_emb.rename(columns={'track_id': 'safe_name'})
 
-    # Final Cleanup: Remove duplicates and reset index
+    master_df = pd.merge(df_meta, df_emb, on='safe_name', how='inner')
     master_df = master_df.drop_duplicates(subset=['safe_name']).reset_index(drop=True)
-    
-    print(f"Master Dataset created with {master_df.shape[0]} songs and {master_df.shape[1]} columns.")
-    
-    # Save as Parquet for fast I/O in the Streamlit app
+
+    if master_df.empty:
+        print("Error: Join produced 0 rows. Check safe_name keys.")
+        return
+
+    print(f"Master Dataset: {len(master_df)} songs, {master_df.shape[1]} columns.")
     master_df.to_parquet(output_master)
-    print(f"Successfully saved Master Dataset to {output_master}")
+    print(f"Saved to {output_master}")
+
 
 if __name__ == "__main__":
     main()

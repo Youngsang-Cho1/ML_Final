@@ -3,6 +3,9 @@ import glob
 import librosa
 import numpy as np
 import pandas as pd
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent
 
 def extract_audio_features(audio_path: str) -> np.ndarray:
     """
@@ -65,55 +68,102 @@ def extract_audio_features(audio_path: str) -> np.ndarray:
 
 
 def main():
-    input_dir = "data/audio_files"
-    embed_dir = "data/embeddings"
-    os.makedirs(embed_dir, exist_ok=True)
+    input_dir = PROJECT_ROOT / "data/audio_files"
+    embed_dir = PROJECT_ROOT / "data/embeddings"
+    embed_dir.mkdir(parents=True, exist_ok=True)
 
     # Gather all audio files
     audio_files = (
-        glob.glob(os.path.join(input_dir, "*.m4a")) +
-        glob.glob(os.path.join(input_dir, "*.mp3"))
+        glob.glob(str(input_dir / "*.m4a")) +
+        glob.glob(str(input_dir / "*.mp3"))
     )
 
     if not audio_files:
         print(f"No audio files found in '{input_dir}'. Please run fetch_youtube_audio.py first.")
         return
 
-    print(f"Found {len(audio_files)} audio files. Extracting MFCC + Chroma + Spectral features...")
+    # Skip files already in parquet
+    out_path = embed_dir / "audio_features.parquet"
+    existing_ids = set()
+    if out_path.exists():
+        existing_df = pd.read_parquet(out_path)
+        existing_ids = set(existing_df["track_id"].tolist())
+        print(f"Existing parquet: {len(existing_ids)} tracks. Skipping these.")
 
-    all_embeddings = []
-    track_ids = []
+    todo_files = [p for p in audio_files if os.path.splitext(os.path.basename(p))[0] not in existing_ids]
+    print(f"Found {len(audio_files)} audio files total, {len(todo_files)} new to process.")
 
-    for i, audio_path in enumerate(audio_files, 1):
-        filename = os.path.basename(audio_path)
-        # safe_name is the filename without extension (same convention as pca.py)
-        track_id = os.path.splitext(filename)[0]
+    if not todo_files:
+        print("Nothing new to extract.")
+        # Still update processed_songs.csv below so newly downloaded tracks are registered
+        all_embeddings = []
+        track_ids = list(existing_ids)
+    else:
+        all_embeddings = []
+        track_ids = []
 
-        try:
-            print(f"[{i}/{len(audio_files)}] Extracting: {filename}")
-            features = extract_audio_features(audio_path)
-            all_embeddings.append(features.tolist())
-            track_ids.append(track_id)
-        except Exception as e:
-            print(f"    -> SKIPPED {filename}: {e}")
+        for i, audio_path in enumerate(todo_files, 1):
+            filename = os.path.basename(audio_path)
+            track_id = os.path.splitext(filename)[0]
 
-    if not all_embeddings:
-        print("No features were extracted successfully.")
+            try:
+                print(f"[{i}/{len(todo_files)}] Extracting: {filename}")
+                features = extract_audio_features(audio_path)
+                all_embeddings.append(features.tolist())
+                track_ids.append(track_id)
+            except Exception as e:
+                print(f"    -> SKIPPED {filename}: {e}")
+
+        if all_embeddings:
+            feature_dim = len(all_embeddings[0])
+            print(f"\nExtracted {feature_dim}D features for {len(all_embeddings)} new songs.")
+
+            new_df = pd.DataFrame({"track_id": track_ids, "embedding": all_embeddings})
+
+            # Append to existing parquet
+            if out_path.exists():
+                existing_df = pd.read_parquet(out_path)
+                combined_df = pd.concat([existing_df, new_df], ignore_index=True).drop_duplicates(subset=["track_id"])
+            else:
+                combined_df = new_df
+
+            combined_df.to_parquet(out_path)
+            print(f"Saved {len(combined_df)} total tracks to {out_path}")
+
+            # For downstream CSV update, use all track_ids including existing ones
+            track_ids = combined_df["track_id"].tolist()
+        else:
+            track_ids = list(existing_ids)
+
+    # Update spotify_songs.csv with newly downloaded tracks
+    existing_csv = PROJECT_ROOT / "data/dataset/processed_songs.csv"
+    manifest_path = PROJECT_ROOT / "data/dataset/download_manifest.csv"
+
+    if not manifest_path.exists():
+        print("No manifest found, skipping processed_songs.csv update.")
         return
 
-    feature_dim = len(all_embeddings[0])
-    print(f"\nExtracted {feature_dim}D feature vector for {len(all_embeddings)} songs.")
+    existing_df = pd.read_csv(existing_csv) if existing_csv.exists() else pd.DataFrame()
+    existing_ids = set(existing_df["track_id"].tolist()) if not existing_df.empty else set()
 
-    # Save in same format as old DINOv2 parquet so pca.py is compatible
-    df = pd.DataFrame({
-        "track_id": track_ids,
-        "embedding": all_embeddings,
-    })
+    manifest = pd.read_csv(manifest_path)
+    full_csv = PROJECT_ROOT / "data/dataset/spotify_songs_full.csv"
+    df_full = pd.read_csv(full_csv)
 
-    out_path = os.path.join(embed_dir, "audio_features.parquet")
-    df.to_parquet(out_path)
-    print(f"Successfully saved MFCC audio features to {out_path}")
+    # safe_name → spotify track_id 매핑 후 추가
+    extracted_safe_names = set(track_ids)
+    matched = manifest[manifest["safe_name"].isin(extracted_safe_names)]
+    matched_spotify_ids = set(matched["track_id"].tolist())
+
+    new_tracks = df_full[df_full["track_id"].isin(matched_spotify_ids) & ~df_full["track_id"].isin(existing_ids)]
+    if not new_tracks.empty:
+        updated_df = pd.concat([existing_df, new_tracks], ignore_index=True).drop_duplicates(subset=["track_id"])
+        updated_df.to_csv(existing_csv, index=False)
+        print(f"Updated {existing_csv} with {len(new_tracks)} new tracks.")
+    else:
+        print(f"No new tracks to add to {existing_csv}")
 
 
 if __name__ == "__main__":
     main()
+

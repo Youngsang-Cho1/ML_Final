@@ -25,3 +25,13 @@ data/playback_cache/
 !data/embeddings/embedded_spectrograms.parquet
 DESIGN_DOC.md
 PIPELINE_EXPLAINED.md
+
+# Editor & Scratch files
+.claude/
+.streamlit/
+scratch/
+
+# Temp logs
+*.jsonl
+download_manifest.csv
+
