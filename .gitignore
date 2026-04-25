@@ -14,24 +14,29 @@ __pycache__/
 .idea/
 .env
 
-# Large Media Files (Exclude from Git to avoid size limits)
+# Large Media & Temp Files (Keep Git small)
 data/audio_files/
 data/playback_cache/
+data/audio/
+scratch/
+tests/
 
-# Keep processed datasets and embeddings for immediate demo usage
-# (These are small enough to be tracked: < 10MB total)
-!data/dataset/clustered_songs.parquet
-!data/dataset/cosine_sim_matrix.npy
-!data/embeddings/embedded_spectrograms.parquet
-DESIGN_DOC.md
-PIPELINE_EXPLAINED.md
+# Keep only the essential master data for portability (~10MB)
+!data/dataset/master_music_data.parquet
+!data/dataset/processed_songs.csv
+!data/embeddings/audio_features.parquet
 
-# Editor & Scratch files
+# Exclude all logs and intermediate manifests
+*.jsonl
+*.log
+download_manifest.csv
+download_failures.csv
+
+# Keep documentation clean
 .claude/
 .streamlit/
-scratch/
-
-# Temp logs
-*.jsonl
-download_manifest.csv
+PRESENTATION.md
+PROPOSAL.md
+DESIGN_DOC.md
+PIPELINE_EXPLAINED.md
 

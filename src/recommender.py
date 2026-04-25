@@ -7,6 +7,25 @@ METADATA_COLS = [
     'instrumentalness', 'liveness', 'valence', 'tempo'
 ]
 
+# 56D audio feature names — order must match extract_audio_features() in audio_feature_extractor.py
+AUDIO_FEATURE_NAMES = (
+    [f"mfcc{i}_mean" for i in range(1, 14)]
+    + [f"mfcc{i}_std" for i in range(1, 14)]
+    + ["chroma_C", "chroma_C#", "chroma_D", "chroma_D#", "chroma_E",
+       "chroma_F", "chroma_F#", "chroma_G", "chroma_G#", "chroma_A",
+       "chroma_A#", "chroma_B"]
+    + ["centroid_mean", "centroid_std",
+       "bandwidth_mean", "bandwidth_std",
+       "rolloff_mean", "rolloff_std",
+       "zcr_mean", "zcr_std",
+       "rms_mean", "rms_std"]
+    + ["audio_tempo"]
+    + [f"spec_contrast_{i}" for i in range(1, 8)]
+)
+
+# 64D full feature space used by K-Means (meta + audio)
+FULL_FEATURE_NAMES = METADATA_COLS + AUDIO_FEATURE_NAMES
+
 
 def build_embedding_std(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -77,22 +96,41 @@ def recommend(
     genre_filter: str = None,
 ) -> list[dict]:
     """
-    Recommend songs using: score = MSE_metadata + lambda * (1 - cosine_similarity_embedding)
-    - MSE on metadata: measures absolute difference in song attributes (tempo, energy, etc.)
-    - Cosine similarity on embedding: measures timbral/sonic direction in 56D audio space
-    Lower score = more similar.
+    Recommend songs using a hybrid multimodal distance metric.
+    
+    Formula: score = MSE(metadata) + λ * (1 - CosineSimilarity(audio))
+    
+    Mathematical Rationale:
+    1. MSE on Metadata (8D):
+       Metadata features (e.g., energy, valence) are bounded [0, 1]. In such low-dimensional 
+       spaces, Euclidean/MSE distance is a valid metric for absolute "vibe" differences.
+       
+    2. Cosine on Audio (56D):
+       High-dimensional vectors suffer from the "Curse of Dimensionality" where Euclidean 
+       distances tend to concentrate (making songs appear equally distant). Cosine Similarity 
+       circumvents this by focusing on the *angle* (semantic direction) between the 
+       acoustic signatures rather than their magnitude.
+       
+    3. λ (Lambda):
+       Balances the two distance systems. A tuned λ=0.1 ensures that metadata acts as 
+       the primary filter while audio embeddings provide fine-grained timbral matching.
     """
     q_meta = meta_matrix[query_idx]
     q_emb = emb_matrix[query_idx]
 
-    # MSE on metadata (low-dimensional, [0,1] range — MSE works well here)
+    # --- Step 1: Metadata Distance (MSE) ---
+    # We measure absolute deviation in track characteristics. 
+    # Small differences (e.g., 0.1 vs 0.12 tempo) yield near-zero scores.
     meta_dists = np.mean((meta_matrix - q_meta) ** 2, axis=1)
 
-    # Cosine similarity on audio embedding (high-dimensional — cosine handles this better)
-    # Convert to distance: 0 = identical, 2 = opposite
+    # --- Step 2: Audio Embedding Distance (1 - Cosine) ---
+    # We focus on the "Acoustic Signature" direction.
+    # Note: emb_matrix was Z-scored and L2-normalized during build_matrices, 
+    # so (1 - dot_product) is equivalent to 0.5 * squared_euclidean(normalized_vectors).
     cos_sim = cosine_similarity(emb_matrix, q_emb)
     emb_dists = 1.0 - cos_sim
 
+    # --- Step 3: Hybrid Fusion ---
     scores = meta_dists + lambda_weight * emb_dists
 
     if genre_filter and genre_filter != "All":

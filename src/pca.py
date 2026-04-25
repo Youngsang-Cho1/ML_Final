@@ -19,7 +19,7 @@ def standardize(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return (X - mean) / std, mean, std
 
 
-def manual_pca(X: np.ndarray, n_components: int = 2) -> tuple[np.ndarray, np.ndarray]:
+def manual_pca(X: np.ndarray, n_components: int = 2):
     """
     Manual PCA via covariance matrix eigendecomposition using SVD.
 
@@ -30,27 +30,30 @@ def manual_pca(X: np.ndarray, n_components: int = 2) -> tuple[np.ndarray, np.nda
     3. Apply SVD to C: C = U S V^T.
        - U: eigenvectors (principal component directions)
        - S: eigenvalues (variance explained per component)
-       Since C is symmetric positive semi-definite, SVD and eigendecomposition
-       are equivalent here. Columns of U are the principal axes.
     4. Project X onto the top-k principal components: X_pca = X_centered @ U[:, :k]
 
-    Returns (X_pca, explained_variance_ratio).
+    Returns (X_pca, explained_variance_ratio, components, mean).
+      - X_pca: (n, n_components) — points projected into PC space
+      - components: (d, n_components) — PC basis vectors (columns are PCs),
+        reusable for projecting new points: Y = (new - mean) @ components
+      - mean: (d,) — data mean used for centering (for projecting new points)
     """
-    n = X.shape[0]
+    n = X.shape[0] # Step 0: Get the number of sample points
 
-    # Step 1: Center the data — PCA requires zero-mean input
-    X_centered = X - X.mean(axis=0)
+    mean_vec = X.mean(axis=0) # Step 1: Calculate the average value of each feature
+    X_centered = X - mean_vec # Step 2: Center data by subtracting the mean from every point
 
-    # Step 2: Covariance matrix (n-1 denominator = unbiased estimate)
+    # Step 3: Compute the Covariance Matrix: (X^T @ X) / (n - 1)
+    # This matrix captures how each pair of features varies together.
     cov = X_centered.T @ X_centered / (n - 1)
 
-    # Step 3: SVD of covariance matrix
+    # Step 4: Perform Singular Value Decomposition (SVD) on the Covariance matrix
+    # U: Orthogonal matrix where columns are Principal Components (Eigenvectors)
+    # S: Diagonal matrix of singular values (Variance explained / Eigenvalues)
     U, S, _ = np.linalg.svd(cov)
 
-    # Step 4: Project data onto the top-k principal components
-    components = U[:, :n_components]
-    X_pca = X_centered @ components
+    components = U[:, :n_components] # Step 5: Select the top K Principal Components
+    X_pca = X_centered @ components # Step 6: Project the original D-dimensional data onto K-dimensions
+    explained_variance_ratio = S[:n_components] / S.sum() # Calculate the % of total variance captured
 
-    explained_variance_ratio = S[:n_components] / S.sum()
-
-    return X_pca, explained_variance_ratio
+    return X_pca, explained_variance_ratio, components, mean_vec # Return results for visualization

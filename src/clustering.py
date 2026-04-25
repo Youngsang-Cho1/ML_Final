@@ -36,60 +36,57 @@ class ManualKMeans:
 
     def _init_centroids_pp(self, X: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         """K-Means++ initialization."""
-        n = X.shape[0]
-        centroids = np.empty((self.n_clusters, X.shape[1]), dtype=X.dtype)
+        n = X.shape[0] # Number of data points
+        centroids = np.empty((self.n_clusters, X.shape[1]), dtype=X.dtype) # Placeholder for K centroids
 
-        # First centroid: uniform random
+        # First centroid: pick one point uniformly at random from X
         centroids[0] = X[rng.integers(n)]
 
-        # Subsequent centroids: weighted by squared distance to nearest existing centroid
+        # Subsequent centroids: choose points with probability proportional to squared distance
         for i in range(1, self.n_clusters):
-            # Squared distance from each point to its nearest chosen centroid
+            # Calculate squared Euclidean distance from every point to its closest already-chosen centroid
+            # X[:, None, :] (n, 1, d) minus centroids[:i][None, :, :] (1, i, d) -> broadcasted distances
             dists_sq = np.min(
                 np.sum((X[:, None, :] - centroids[:i][None, :, :]) ** 2, axis=2),
                 axis=1,
             )
-            total = dists_sq.sum()
+            total = dists_sq.sum() # Sum of squared distances for normalization
             if total == 0:
-                # All points coincide with existing centroids; fall back to random
+                # Fallback to random if all points overlap with chosen centroids
                 centroids[i] = X[rng.integers(n)]
             else:
-                probs = dists_sq / total
-                centroids[i] = X[rng.choice(n, p=probs)]
+                probs = dists_sq / total # Probability distribution (closer points = lower prob)
+                centroids[i] = X[rng.choice(n, p=probs)] # Weighted random selection
 
         return centroids
 
     def _lloyds(self, X: np.ndarray, centroids: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
-        """Lloyd's algorithm. Returns (labels, final_centroids, inertia)."""
-        labels = np.zeros(X.shape[0], dtype=np.int64)
+        """Lloyd's algorithm inner loop."""
+        labels = np.zeros(X.shape[0], dtype=np.int64) # Buffer for cluster assignments
 
         for _ in range(self.max_iter):
-            # (a) Assignment step: each point → nearest centroid
-            # Compute squared distances: ||X - C||² for each (point, centroid) pair
+            # Assignment: Compute distance from every point to every centroid
             dists_sq = np.sum((X[:, None, :] - centroids[None, :, :]) ** 2, axis=2)
-            new_labels = np.argmin(dists_sq, axis=1)
+            new_labels = np.argmin(dists_sq, axis=1) # Pick the index of the closest centroid
 
-            # (b) Update step: centroid = mean of its assigned points
+            # Update: New centroid = mean coordinates of all points assigned to it
             new_centroids = np.empty_like(centroids)
             for k in range(self.n_clusters):
-                mask = new_labels == k
+                mask = new_labels == k # Points belonging to cluster k
                 if mask.any():
-                    new_centroids[k] = X[mask].mean(axis=0)
+                    new_centroids[k] = X[mask].mean(axis=0) # Take the geometric mean
                 else:
-                    # Empty cluster — keep old centroid to avoid degeneracy
-                    new_centroids[k] = centroids[k]
+                    new_centroids[k] = centroids[k] # Preserve old centroid if cluster is empty
 
-            # Convergence check: centroid shift
+            # Check convergence: total movement of centroids
             shift = np.linalg.norm(new_centroids - centroids)
-            centroids = new_centroids
-            labels = new_labels
-            if shift < self.tol:
+            centroids = new_centroids # Update centroids for next iteration
+            labels = new_labels # Update labels
+            if shift < self.tol: # Stop if shift is below tolerance
                 break
 
-        # Inertia = sum of squared distances of each point to its assigned centroid
-        inertia = float(np.sum(
-            np.sum((X - centroids[labels]) ** 2, axis=1)
-        ))
+        # Calculate final inertia: total intra-cluster sum of squares
+        inertia = float(np.sum(np.sum((X - centroids[labels]) ** 2, axis=1)))
         return labels, centroids, inertia
 
     def fit(self, X: np.ndarray) -> "ManualKMeans":
