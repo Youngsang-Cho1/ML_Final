@@ -257,7 +257,7 @@ def render_player():
         with st.spinner(" "): 
             path = fetch_youtube_audio(curr['name'], curr['artist'])
             if path:
-                st.audio(path, format="audio/m4a", autoplay=True)
+                st.audio(path, autoplay=True)
             else:
                 st.error("Streaming failed.")
     st.markdown('</div>', unsafe_allow_html=True)
