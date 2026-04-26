@@ -1,4 +1,3 @@
-import yt_dlp
 import os
 import glob
 import time
@@ -37,6 +36,7 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
     }
     
     try:
+        import yt_dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # We use extract_info directly with download=True as per Kai's PR
             ydl.extract_info(query, download=True)
