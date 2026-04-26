@@ -24,11 +24,20 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
     if os.path.exists(file_path):
         return file_path
         
-    query = f"ytsearch1:{track_name} {artist_name} audio"
+    # We define a fallback chain: SoundCloud -> YouTube Lyrics
+    queries = [
+        f"scsearch1:{track_name} {artist_name}",
+        f"ytsearch1:{track_name} {artist_name} lyrics"
+    ]
     
     ydl_opts = {
-        'format': 'bestaudio[ext=m4a]',
-        'outtmpl': file_path,
+        'format': 'bestaudio/best',
+        # yt-dlp + ffmpeg postprocessor will automatically append .m4a to this outtmpl
+        'outtmpl': file_path.replace('.m4a', ''),
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'm4a',
+        }],
         'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
@@ -39,12 +48,15 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
     try:
         import yt_dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # We use extract_info directly with download=True as per Kai's PR
-            ydl.extract_info(query, download=True)
-            if os.path.exists(file_path):
-                # Clean up if cache is getting too large (keep last 20)
-                manage_cache_size(cache_dir)
-                return file_path
+            for query in queries:
+                try:
+                    ydl.extract_info(query, download=True)
+                    if os.path.exists(file_path):
+                        manage_cache_size(cache_dir)
+                        return file_path
+                except Exception as sub_e:
+                    print(f"Skipping blocked/unavailable source for {query}: {sub_e}")
+                    continue
     except Exception as e:
         print(f"Error fetching audio for {track_name}: {e}")
         return None
