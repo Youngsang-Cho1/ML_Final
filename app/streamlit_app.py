@@ -163,7 +163,6 @@ def _jump(delta: int):
     if 0 <= new_idx < len(q):
         st.session_state['queue_idx'] = new_idx
         st.session_state['playing_song'] = dict(q[new_idx])
-        st.rerun()
 
 def next_song(): _jump(+1)
 def prev_song(): _jump(-1)
@@ -248,11 +247,9 @@ def render_player():
             """, unsafe_allow_html=True)
 
         with c_prev:
-            if st.button("⏮", disabled=(q_idx <= 0 or q_len <= 1), use_container_width=True, key="player_prev"):
-                prev_song()
+            st.button("⏮", disabled=(q_idx <= 0 or q_len <= 1), use_container_width=True, key="player_prev", on_click=prev_song)
         with c_next:
-            if st.button("⏭", disabled=(q_idx >= q_len - 1 or q_len <= 1), use_container_width=True, key="player_next"):
-                next_song()
+            st.button("⏭", disabled=(q_idx >= q_len - 1 or q_len <= 1), use_container_width=True, key="player_next", on_click=next_song)
 
         with st.spinner(" "): 
             path = fetch_youtube_audio(curr['name'], curr['artist'])
