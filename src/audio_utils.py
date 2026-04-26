@@ -18,7 +18,7 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
     
     # 1. Generate consistent filename
     safe_name = get_safe_name(track_name, artist_name)
-    file_path = os.path.join(cache_dir, f"{safe_name}.m4a")
+    file_path = os.path.join(cache_dir, f"{safe_name}.mp3")
     
     # 2. Check Cache: Avoid redundant downloads
     if os.path.exists(file_path):
@@ -32,12 +32,7 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
     
     ydl_opts = {
         'format': 'bestaudio/best',
-        # yt-dlp + ffmpeg postprocessor will automatically append .m4a to this outtmpl
-        'outtmpl': file_path.replace('.m4a', ''),
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'm4a',
-        }],
+        'outtmpl': file_path,
         'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
@@ -65,7 +60,7 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
 
 def manage_cache_size(cache_dir, max_files=20):
     """Keep the playback cache lean by deleting oldest files."""
-    files = glob.glob(os.path.join(cache_dir, "*.m4a"))
+    files = glob.glob(os.path.join(cache_dir, "*.mp3")) + glob.glob(os.path.join(cache_dir, "*.m4a"))
     if len(files) > max_files:
         # Sort by modification time (oldest first)
         files.sort(key=os.path.getmtime)
