@@ -1,6 +1,5 @@
 import os
 import glob
-import librosa
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -20,6 +19,7 @@ def extract_audio_features(audio_path: str) -> np.ndarray:
     - Spectral Contrast (9D): foreground vs background energy separation.
     """
     # Load audio (mono, 22.05kHz) - limited to first 60s for consistency
+    import librosa
     y, sr = librosa.load(audio_path, sr=22050, mono=True, duration=60)
 
     features = []
