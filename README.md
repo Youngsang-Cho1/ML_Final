@@ -1,54 +1,85 @@
-# ML Final Project
+# 🎵 Multimodal Music Discovery Engine
+**NYU CSCI-UA 473: Fundamentals of Machine Learning (Final Project)**
 
-## Project Objective
-The problem users face is that they often know the type of songs they want, but struggle to find more songs that match their preferences. Songs from different general labels such as genre or artist can still feel similar since their audio features might be similar, while songs from the same category can also sound different. Our goal is to build a music discovery web app that helps users find songs similar to a selected song or ones that match their preferences more directly based on numerical audio features rather than just general labels.
+---
 
-## Dataset
-We are using the 30,000 Spotify Songs dataset from Kaggle. It contains 23 variables across three main categories:
-- Track metadata: Song name, artist.
-- Playlist information: Playlist genre, subgenre.
-- Numerical audio features: Danceability, energy, valence, tempo, etc.
+## 📖 Project Objective
+A high-fidelity music recommendation engine that focuses on **Acoustic Consistency**. We deliberately avoid black-box libraries, implementing core ML algorithms (Manual PCA, Manual K-Means++) from scratch in `NumPy` to demonstrate a deep understanding of vector space models and multimodal fusion.
 
-## Methodology
-The web app uses methods and algorithms covered in our Machine Learning course:
-- K-Means Clustering: We map each song into a vector space using its 12 numerical audio features. K-Means clustering then groups songs with similar audio characteristics into different categories. 
-- Cosine Similarity: Within a specific cluster, we apply cosine similarity to find songs that are most similar to a user’s selected song or preferred characteristics. The similarity scores rank the songs to provide the closest matches as recommendations based on actual sound rather than abstract labels. Our logic guarantees recommendations are drawn strictly from the same cluster, and we surface contextual metadata such as genres directly in the web app UI for reference.
-- PCA (Principal Component Analysis): Since 12 numerical features in a high-dimensional space can be difficult to interpret, we apply PCA to reduce dimensionality. This transforms the features into a smaller number of principal components while preserving maximum variance, allowing us to evaluate and interpret our clusters more effectively.
+### The "Skip" Problem
+Traditional systems rely on broad genre tags or popularity. We solve this by creating a **mathematical "ear"** for sound, ensuring that recommendations are acoustically aligned with the seed song's timbre, texture, and energy.
 
-## Deliverables
-- Codebase: A GitHub repository containing deployable code.
-- Demo: A deployed web application built with Streamlit.
-- Presentation: A live demonstration to be presented during the final weeks of the course.
+---
 
-## Repository Structure
-- data/: Contains raw and processed datasets.
-- src/: Source code for the modules (preprocessing, clustering, similarity, PCA, and recommendation system).
-- app/: Contains the Streamlit web application.
-- tests/: Unit tests for the modules.
+## 🧠 Core Architecture: Hybrid Retrieval
+We fuse two distinct modalities using a weighted distance ensemble:
 
-## Setup Instructions
-1. Create a virtual environment using `uv`: `uv venv`
-2. Activate the python virtual environment: `source .venv/bin/activate`
-3. Install the necessary dependencies: `uv pip install -r requirements.txt spotipy pandas requests python-dotenv`
+### 1. Distance Metric
+`Score = MSE(Metadata_Dist) + λ × (1 − Cosine_Similarity(Audio_Embeddings))`
 
-## Updating Dataset Audio
-If you'd like to download audio locally into `.m4a` files using YouTube and embed them using Hugging Face DINOv2:
-1. Run the fetching script (uses `yt-dlp` to query matches directly from YouTube without needing any API keys!):
-   ```sh
-   python src/fetch_youtube_audio.py
-   ```
-   This will read the first 1,000 tracks from `data/dataset/spotify_songs.csv` and download the `.m4a` audio directly into the `data/audio_files/` directory.
+*   **Metadata (8D):** High-level vibes (Danceability, Energy, etc.). MSE captures absolute intensity differences.
+*   **Audio Embedding (56D):** Raw MFCC, Chroma, and Spectral features. Cosine Similarity captures the *direction* of the acoustic signature, overcoming the curse of dimensionality.
 
-3. **Convert to Spectrograms**:
-   Once you have downloaded the audio preview files, you can generate image spectrograms for them by running:
-   ```sh
-   python src/generate_spectrograms.py
-   ```
-   This will read the `.m4a`/`.mp3` files in `data/audio_files/`, create Mel Spectrogram images without borders or axes, and save them as `.png` files in the `data/spectrograms/` directory.
+### 2. Preventing "Cosine Collapse"
+Raw Librosa features vary wildly in scale (MFCC_0: -300, ZCR: 0.05). If unscaled, the largest dimensions dominate the vector angle, making all songs look identical. 
+**Our Solution:** We enforce **Z-score Standardization (Zero Mean, Unit Variance)** across the entire 13k+ song dataset. This ensures every acoustic property has an equal voice, resulting in a balanced similarity space.
 
-4. **Embed Spectrograms**:
-   Once the images are generated, generate their embeddings using DINOv2:
-   ```sh
-   python src/spectrogram_embedding.py
-   ```
-   This reads the `.png` files, evaluates them with the `facebook/dinov2-small` model running locally, and creates a vectorized dataset stored as `data/embeddings/embedded_parquet.parquet`.
+---
+
+## ⚖️ λ-Tuning & Evaluation (Proven Merit)
+We don't guess our parameters. We tune them via a **Same-Artist vs Random-Pair Discrimination Sweep**.
+
+### Results (on 13,162 unique tracks)
+| Variant | Pass Rate (Discrimination Accuracy) |
+| :--- | :--- |
+| Random Baseline | 50.0% |
+| Metadata-only | 76.7% |
+| Audio-only | 76.0% |
+| **Hybrid (λ=0.1)** | **83.3%** ✅ |
+
+*   **Pass Rate:** The probability that a song from the same artist is ranked closer than a completely random song.
+*   **Chosen λ = 0.1:** Maximizes the engine's ability to recognize consistent production styles and vocal timbres.
+
+---
+
+## 🚀 Key Features & Interactive UI
+*   **🎧 Seed Song Tab:** Discover similarity with premium visualizations.
+*   **🔍 Analyze Any Song:** Zero-text inference. Download any YouTube URL, extract its 56D DNA, and find its matches in our 13k database.
+*   **🎚️ Live λ Slider:** Side-by-side control. Shift from "Metadata-focused" (Balanced) to "Sound-focused" (Pure Audio) in real-time.
+*   **📼 Global Music Player:** YouTube-style persistent player with a unified queue. Starts with the seed song and flows seamlessly into recommendations.
+*   **📊 3D PCA Discovery:** Explore the 13,162-song vector space in interactive 3D, projected via our manual SVD implementation.
+
+---
+
+## 🗂️ Project Structure
+```
+src/
+  pca.py               # [MANUAL] SVD-based PCA implementation
+  clustering.py        # [MANUAL] Lloyd's algorithm & K-Means++ implementation
+  recommender.py       # Hybrid distance logic (MSE + Cosine)
+  tune_lambda.py       # λ tuning sweep & evaluation scripts
+  audio_feature_extractor.py  # 56D Librosa feature engineering
+  fetch_youtube_audio.py      # Automated nightly download pipeline
+  build_master_dataset.py     # Data fusion & Z-score scaling
+
+app/
+  streamlit_app.py     # Premium UI (YouTube Music style)
+```
+
+---
+
+## 🛠️ Setup & Usage
+1. **Install:** `pip install -r requirements.txt`
+2. **Launch:** `python -m streamlit run app/streamlit_app.py`
+3. **Reproduce Eval:** `python3 src/tune_lambda.py`
+
+---
+
+## 👥 Division of Labor
+| Team Member | Primary Responsibility |
+| :--- | :--- |
+| **Aiden** | Data engineering — YouTube pipeline, Librosa feature extraction |
+| **Kai** | UI/UX Design, JavaScript/CSS, Global Player integration |
+| **Max** | Manual PCA (SVD) & Clustering implementation |
+| **Yanfu** | Distance metric design, λ tuning methodology |
+| **Sue** | Technical defense, Evaluation metrics & Sanity checks |

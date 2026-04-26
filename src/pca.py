@@ -1,104 +1,59 @@
-import os
-import pandas as pd
+"""
+Manual PCA implementation using covariance matrix + SVD.
+Used for 2D visualization of audio embeddings in the Streamlit Evaluation tab.
+No sklearn dependency.
+"""
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
 
-def main():
-    # 1. Load Spotify Metadata
-    csv_path = 'data/dataset/spotify_songs.csv'
-    if not os.path.exists(csv_path):
-        print(f"Cannot find {csv_path}")
-        return
-        
-    df = pd.read_csv(csv_path)
-    
-    # Create the exact same 'safe_name' string to accurately join with the embedding parquet
-    # Since fetch_youtube_audio.py saves the files using safe_name, the embed_dir gets that name as track_id
-    df['safe_name'] = df.apply(lambda row: "".join([c for c in f"{row['track_name']} - {row['track_artist']}" if c.isalpha() or c.isdigit() or c==' ']).rstrip(), axis=1)
-    
-    # CRITICAL: Drop duplicates in the original dataset to avoid inflating the joined table
-    original_count = len(df)
-    df = df.drop_duplicates(subset=['safe_name']).reset_index(drop=True)
-    print(f"Dropped duplicate songs from metadata: {original_count} -> {len(df)}")
-    
-    # 2. Load Embeddings
-    parquet_path = 'data/embeddings/embedded_spectrograms.parquet'
-    if not os.path.exists(parquet_path):
-        print(f"Cannot find {parquet_path}. Have you run fetch_youtube_audio -> generate_spectrograms -> spectrogram_embedding?")
-        return
-        
-    try:
-        embeddings_df = pd.read_parquet(parquet_path)
-    except Exception as e:
-        print(f"Error loading embeddings: {e}")
-        return
-        
-    # Merge on the safe_name
-    print("Merging Spotify dataset with MFCC audio features...")
-    merged_df = pd.merge(df, embeddings_df, left_on='safe_name', right_on='track_id', how='inner')
-    print(f"Merged Data Shape: {merged_df.shape}")
-    
-    if merged_df.empty:
-        print("No matching records found after merge.")
-        return
 
-    # 3. Process Original Numeric Features (13 features)
-    numeric_features = [
-        'track_popularity', 'danceability', 'energy', 'key', 'loudness', 'mode',
-        'speechiness', 'acousticness', 'instrumentalness', 'liveness', 'valence',
-        'tempo', 'duration_ms'
-    ]
-    
-    X_num = merged_df[numeric_features].copy()
-    
-    # Handle missing values
-    valid_indices = X_num.dropna().index
-    X_num = X_num.loc[valid_indices]
-    merged_df = merged_df.loc[valid_indices].reset_index(drop=True)
-    
-    # Standardize numerical features
-    scaler_num = StandardScaler()
-    X_num_scaled = scaler_num.fit_transform(X_num)
-    
-    # PCA on Numerical Features (Dimensionality: 13 -> 5)
-    n_comp_num = min(5, X_num_scaled.shape[0])
-    pca_num = PCA(n_components=n_comp_num)
-    X_num_pca = pca_num.fit_transform(X_num_scaled)
-    print(f"Spotify Features reduced via PCA: {X_num_scaled.shape[1]} -> {X_num_pca.shape[1]} dimensions")
-    
-    # 4. Process DINOv2 Embeddings
-    X_emb = np.stack(merged_df['embedding'].values)
-    
-    # Standardize embeddings
-    scaler_emb = StandardScaler()
-    X_emb_scaled = scaler_emb.fit_transform(X_emb)
-    
-    # PCA on Audio Embeddings (MFCC: ~58D -> 20D)
-    # Less aggressive reduction since MFCC features are already meaningful
-    n_comp_emb = min(20, X_emb_scaled.shape[0], X_emb_scaled.shape[1])
-    pca_emb = PCA(n_components=n_comp_emb)
-    X_emb_pca = pca_emb.fit_transform(X_emb_scaled)
-    print(f"Audio Embeddings (MFCC) reduced via PCA: {X_emb_scaled.shape[1]} -> {X_emb_pca.shape[1]} dimensions")
-    
-    # 5. Multimodal Fusion (Concatenation)
-    X_fused = np.hstack((X_num_pca, X_emb_pca))
-    print(f"Final Fused Data Shape: {X_fused.shape[1]} dimensions (Ready for Clustering)")
-    
-    # Save the fused features and track metadata so clustering.py can use it
-    out_df = merged_df[['track_name', 'track_artist', 'playlist_genre']].copy()
-    
-    # Rename for safety
-    if 'track_id_x' in merged_df.columns:
-        out_df['spotify_id'] = merged_df['track_id_x']
-    elif 'track_id' in merged_df.columns:
-        out_df['spotify_id'] = merged_df['track_id']
-        
-    out_df['fused_features'] = list(X_fused)
-    
-    out_path = 'data/dataset/fused_features.parquet'
-    out_df.to_parquet(out_path)
-    print(f"Successfully saved fused multimodal features to {out_path}")
+def standardize(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Standardize X to zero mean and unit variance (z-score normalization).
+    This is critical before PCA: without it, high-variance features
+    (e.g. tempo in BPM) would dominate the principal components purely
+    because of their scale, not because they carry more information.
+    """
+    mean = X.mean(axis=0)
+    std = X.std(axis=0)
+    std = np.where(std == 0, 1.0, std)  # avoid division by zero for constant features
+    return (X - mean) / std, mean, std
 
-if __name__ == "__main__":
-    main()
+
+def manual_pca(X: np.ndarray, n_components: int = 2):
+    """
+    Manual PCA via covariance matrix eigendecomposition using SVD.
+
+    Steps:
+    1. Center X (subtract mean) so the covariance is computed around the origin.
+    2. Compute the covariance matrix: C = X^T @ X / (n-1).
+       Each entry C[i,j] measures how much feature i and j vary together.
+    3. Apply SVD to C: C = U S V^T.
+       - U: eigenvectors (principal component directions)
+       - S: eigenvalues (variance explained per component)
+    4. Project X onto the top-k principal components: X_pca = X_centered @ U[:, :k]
+
+    Returns (X_pca, explained_variance_ratio, components, mean).
+      - X_pca: (n, n_components) — points projected into PC space
+      - components: (d, n_components) — PC basis vectors (columns are PCs),
+        reusable for projecting new points: Y = (new - mean) @ components
+      - mean: (d,) — data mean used for centering (for projecting new points)
+    """
+    n = X.shape[0] # Step 0: Get the number of sample points
+
+    mean_vec = X.mean(axis=0) # Step 1: Calculate the average value of each feature
+    X_centered = X - mean_vec # Step 2: Center data by subtracting the mean from every point
+
+    # Step 3: Compute the Covariance Matrix: (X^T @ X) / (n - 1)
+    # This matrix captures how each pair of features varies together.
+    cov = X_centered.T @ X_centered / (n - 1)
+
+    # Step 4: Perform Singular Value Decomposition (SVD) on the Covariance matrix
+    # U: Orthogonal matrix where columns are Principal Components (Eigenvectors)
+    # S: Diagonal matrix of singular values (Variance explained / Eigenvalues)
+    U, S, _ = np.linalg.svd(cov)
+
+    components = U[:, :n_components] # Step 5: Select the top K Principal Components
+    X_pca = X_centered @ components # Step 6: Project the original D-dimensional data onto K-dimensions
+    explained_variance_ratio = S[:n_components] / S.sum() # Calculate the % of total variance captured
+
+    return X_pca, explained_variance_ratio, components, mean_vec # Return results for visualization

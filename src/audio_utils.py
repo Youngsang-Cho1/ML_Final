@@ -3,18 +3,25 @@ import os
 import glob
 import time
 
+def get_safe_name(track_name, artist_name):
+    """
+    Standardizes 'Song - Artist' into a filesystem-safe string.
+    Ensures that downloaded files and dataset join-keys are identical.
+    """
+    return "".join([c for c in f"{track_name} - {artist_name}" if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+
 def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"):
     """
-    On-demand fetcher that finds a song on YouTube and downloads the audio 
-    for playback. Ported from teammate Kai's PR logic.
+    On-demand fetcher that finds a song on YouTube and downloads the .m4a 
+    for real-time playback in the Streamlit app.
     """
     os.makedirs(cache_dir, exist_ok=True)
     
-    # Create a safe filename
-    safe_name = "".join([c for c in f"{track_name} - {artist_name}" if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+    # 1. Generate consistent filename
+    safe_name = get_safe_name(track_name, artist_name)
     file_path = os.path.join(cache_dir, f"{safe_name}.m4a")
     
-    # Check if already in cache
+    # 2. Check Cache: Avoid redundant downloads
     if os.path.exists(file_path):
         return file_path
         
