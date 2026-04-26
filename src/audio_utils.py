@@ -69,3 +69,50 @@ def manage_cache_size(cache_dir, max_files=20):
                 os.remove(files[i])
             except:
                 pass
+
+def fetch_audio_for_analysis(search_query, cache_dir="data/playback_cache"):
+    """
+    Downloads audio specifically for 'Analyze Any Song'.
+    Supports direct YouTube URLs or plain text searches.
+    Forces YouTube to guarantee we get the official song, not a SoundCloud cover.
+    """
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    # Generate a safe name for caching based on the query
+    safe_name = "".join([c for c in search_query if c.isalnum() or c==' ']).rstrip()
+    if len(safe_name) > 50:
+        safe_name = safe_name[:50]
+    
+    file_path = os.path.join(cache_dir, f"analysis_{safe_name}.mp3")
+    
+    if os.path.exists(file_path):
+        return file_path
+
+    # If it's a URL, download it directly. Otherwise, do a YouTube search.
+    if search_query.startswith("http://") or search_query.startswith("https://"):
+        query = search_query
+    else:
+        query = f"ytsearch1:{search_query} official audio"
+        
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': file_path,
+        'noplaylist': True,
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False,
+        'extractor_args': {'youtube': ['player_client=android']}
+    }
+    
+    try:
+        import yt_dlp
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(query, download=True)
+            if os.path.exists(file_path):
+                manage_cache_size(cache_dir)
+                return file_path
+    except Exception as e:
+        print(f"Error fetching analysis audio for {search_query}: {e}")
+        return None
+        
+    return None

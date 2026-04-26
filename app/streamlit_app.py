@@ -414,7 +414,8 @@ with tab_discovery:
     if search_query and st.button("Analyze & Match", type="primary"):
         with st.spinner("Downloading Songs..."):
             try:
-                tmp_path = fetch_youtube_audio(search_query, "")
+                from src.audio_utils import fetch_audio_for_analysis
+                tmp_path = fetch_audio_for_analysis(search_query)
                 if not tmp_path:
                     st.error("Could not download audio.")
                     st.stop()

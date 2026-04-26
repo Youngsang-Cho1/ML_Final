@@ -3,6 +3,12 @@
 
 ---
 
+## 🔗 Live Demo & Documentation
+*   **[🟢 Live Web App (Streamlit)](https://youngsang-cho1-ml-final-appstreamlit-app-pgt8wj.streamlit.app/)**
+*   **[📄 Mathematical Design Document (DESIGN_DOC.md)](./DESIGN_DOC.md)**: Deep dive into the from-scratch algorithms (PCA, K-Means++, Hybrid Metrics).
+
+---
+
 ## 📖 Project Objective
 A high-fidelity music recommendation engine that focuses on **Acoustic Consistency**. We deliberately avoid black-box libraries, implementing core ML algorithms (Manual PCA, Manual K-Means++) from scratch in `NumPy` to demonstrate a deep understanding of vector space models and multimodal fusion.
 
@@ -64,6 +70,11 @@ src/
 
 app/
   streamlit_app.py     # Premium UI (YouTube Music style)
+
+data/
+  dataset/             # master_music_data.parquet (Streamlit App DB)
+  audio_files/         # Raw .m4a files from YouTube (git-ignored)
+  embeddings/          # 58D Librosa extractions (git-ignored)
 ```
 
 ---
