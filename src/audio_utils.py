@@ -32,7 +32,8 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
         'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': False
+        'extract_flat': False,
+        'extractor_args': {'youtube': ['player_client=android']}
     }
     
     try:
