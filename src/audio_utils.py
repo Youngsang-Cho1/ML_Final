@@ -24,7 +24,7 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
     if os.path.exists(file_path):
         return file_path
         
-    query = f"ytsearch1:{track_name} {artist_name} audio"
+    query = f"ytsearch3:{track_name} {artist_name} lyrics"
     
     ydl_opts = {
         'format': 'bestaudio[ext=m4a]',
@@ -38,12 +38,20 @@ def fetch_youtube_audio(track_name, artist_name, cache_dir="data/playback_cache"
     try:
         import yt_dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # We use extract_info directly with download=True as per Kai's PR
-            ydl.extract_info(query, download=True)
-            if os.path.exists(file_path):
-                # Clean up if cache is getting too large (keep last 20)
-                manage_cache_size(cache_dir)
-                return file_path
+            # Extract top 3 results without downloading first
+            info = ydl.extract_info(query, download=False)
+            if info and 'entries' in info:
+                for entry in info['entries']:
+                    if not entry: continue
+                    try:
+                        # Try to download the specific video URL
+                        ydl.download([entry['webpage_url']])
+                        if os.path.exists(file_path):
+                            manage_cache_size(cache_dir)
+                            return file_path
+                    except Exception as sub_e:
+                        print(f"Skipping blocked video: {sub_e}")
+                        continue
     except Exception as e:
         print(f"Error fetching audio for {track_name}: {e}")
         return None
